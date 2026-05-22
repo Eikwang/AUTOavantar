@@ -946,10 +946,16 @@ class SmartCutService:
             output_dir = self.base_dir.parent / "output"
             output_dir.mkdir(parents=True, exist_ok=True)
 
-            # 生成输出文件名
+            # 生成输出文件名（避免同名覆盖）
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_name = output_name or f"merged_{timestamp}"
             output_path = output_dir / f"{output_name}.mp4"
+            # 如果文件已存在，添加序号避免覆盖
+            if output_path.exists():
+                counter = 1
+                while output_path.exists():
+                    output_path = output_dir / f"{output_name}_{counter}.mp4"
+                    counter += 1
 
             # 分辨率映射
             resolution_map = {

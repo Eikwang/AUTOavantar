@@ -6,7 +6,7 @@
 import logging
 import os
 import platform
-import subprocess
+
 import time
 import shutil
 import random
@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 
 from core.models.task import ScriptSegment, Task, TaskConfig
 from core.paths import get_path_manager
+
+from api.utils.async_subprocess import async_run_subprocess, async_run_ffmpeg, async_run_ffprobe
 
 # 导入转场效果常量
 from business.postprocess.transition_effects import (
@@ -66,7 +68,7 @@ class VideoSynthesizer:
 
         logger.info(f"VideoSynthesizer 初始化成功，输出目录: {self.output_dir}")
 
-    def generate_segment(
+    async def generate_segment(
         self,
         segment: ScriptSegment,
         video_source: str,
@@ -171,7 +173,7 @@ class VideoSynthesizer:
                 output_path = video_path
 
                 # 获取视频时长
-                duration = self._get_video_duration(output_path)
+                duration = await self._get_video_duration(output_path)
 
                 segment.video_path = output_path
                 segment.duration = duration
@@ -246,7 +248,7 @@ class VideoSynthesizer:
         # 如果没有找到匹配的视频，使用默认视频
         return default_video.replace("\\", "/")
 
-    def generate_all(
+    async def generate_all(
         self,
         task: Task,
         config: TaskConfig,
@@ -463,7 +465,7 @@ class VideoSynthesizer:
                             if len(audio_list) == 1:
                                 scene_combined_audio = audio_list[0]
                             else:
-                                if not self._concat_audio_files(audio_list, scene_combined_audio):
+                                if not await self._concat_audio_files(audio_list, scene_combined_audio):
                                     scene_combined_audio = None
                                 else:
                                     # 记录中间文件
@@ -471,13 +473,13 @@ class VideoSynthesizer:
                         
                         if scene_combined_audio:
                             # 获取音频时长
-                            audio_duration = self._get_audio_duration(scene_combined_audio)
+                            audio_duration = await self._get_audio_duration(scene_combined_audio)
                             if audio_duration > 0:
                                 # 输出文件名
                                 scene_output_path = os.path.join(self.output_dir, f"scene_{tone}_{task.task_id}.mp4")
                                 
                                 # 使用 ffmpeg 处理：替换音频，并调整视频长度
-                                success = self._replace_audio_in_video(matched_video, scene_combined_audio, scene_output_path, audio_duration)
+                                success = await self._replace_audio_in_video(matched_video, scene_combined_audio, scene_output_path, audio_duration)
                                 
                                 if success and os.path.exists(scene_output_path):
                                     tone_video_paths.append(scene_output_path)
@@ -526,7 +528,7 @@ class VideoSynthesizer:
                             final_video_with_both_audio = None
                             if right_result and os.path.exists(right_result):
                                 final_output_path = os.path.join(self.output_dir, f"final_{tone}_{task.task_id}.mp4")
-                                final_video_with_both_audio = self._merge_left_right_audio_to_video(
+                                final_video_with_both_audio = await self._merge_left_right_audio_to_video(
                                     video_path=right_result,
                                     left_audio_path=left_audio,
                                     right_audio_path=right_audio,
@@ -568,16 +570,16 @@ class VideoSynthesizer:
                     if config.enable_transition:
                         # 使用转场效果合并
                         logger.info("双人模式启用转场效果，使用 xfade 滤镜合并")
-                        final_video = self._concat_videos_with_transition(
+                        final_video = await self._concat_videos_with_transition(
                             tone_video_paths, task.task_id, config
                         )
                         if not final_video:
                             # 转场合并失败，回退到普通合并
                             logger.warning("转场合并失败，回退到普通合并")
-                            final_video = self._concat_videos(tone_video_paths, task.task_id)
+                            final_video = await self._concat_videos(tone_video_paths, task.task_id)
                     else:
                         # 使用普通合并
-                        final_video = self._concat_videos(tone_video_paths, task.task_id)
+                        final_video = await self._concat_videos(tone_video_paths, task.task_id)
                     # 记录合并后的视频作为中间文件
                     if final_video:
                         merged_path = os.path.join(self.output_dir, f"merged_{task.task_id}.mp4")
@@ -686,13 +688,13 @@ class VideoSynthesizer:
                     if tag_matcher.is_scene_tag(tone) and is_scene_matched and video_source:
                         # 场景视频匹配成功：不需要调用 HeyGem 合成，直接使用匹配到的视频，然后合并音频
                         logger.info(f"段落 {segment.segment_id} 场景标签 '{tone}' 匹配成功，跳过 HeyGem 合成，直接使用匹配视频: {video_source}")
-                        result = self._process_scene_video(segment, video_source, task_id=task.task_id)
+                        result = await self._process_scene_video(segment, video_source, task_id=task.task_id)
                         results.append(result)
                     else:
                         # 非场景视频或场景视频匹配失败：正常调用 HeyGem 合成
                         if tag_matcher.is_scene_tag(tone) and not is_scene_matched:
                             logger.info(f"段落 {segment.segment_id} 场景标签 '{tone}' 匹配失败，使用开场视频并调用 HeyGem 合成")
-                        result = self.generate_segment(
+                        result = await self.generate_segment(
                             segment=segment,
                             video_source=video_source or source_video,
                             config=config,
@@ -721,15 +723,15 @@ class VideoSynthesizer:
 
         return results
     
-    def _process_scene_video(self, segment: ScriptSegment, video_path: str, task_id: Optional[str] = None) -> VideoSegmentResult:
+    async def _process_scene_video(self, segment: ScriptSegment, video_path: str, task_id: Optional[str] = None) -> VideoSegmentResult:
         """
         处理场景视频：不需要调用 HeyGem 合成，直接将音频合并到视频中并对齐长度
-        
+
         Args:
             segment: 文案段落
             video_path: 匹配到的场景视频路径
             task_id: 任务ID，用于文件命名前缀
-            
+
         Returns:
             处理结果
         """
@@ -743,7 +745,7 @@ class VideoSynthesizer:
                 status="failed",
                 error_message=f"场景视频不存在: {video_path}"
             )
-        
+
         if not segment.audio_path or not os.path.exists(segment.audio_path):
             logger.error(f"音频文件不存在: {segment.audio_path}")
             return VideoSegmentResult(
@@ -754,41 +756,41 @@ class VideoSynthesizer:
                 status="failed",
                 error_message="音频文件不存在"
             )
-        
+
         try:
             # 获取音频时长
-            audio_duration = self._get_audio_duration(segment.audio_path)
-            
+            audio_duration = await self._get_audio_duration(segment.audio_path)
+
             # 获取视频时长
-            video_duration = self._get_video_duration(video_path)
-            
+            video_duration = await self._get_video_duration(video_path)
+
             if audio_duration <= 0 or video_duration <= 0:
                 logger.error(f"无法获取音视频时长: 音频={audio_duration}, 视频={video_duration}")
                 raise Exception(f"无法获取音视频时长: 音频={audio_duration}, 视频={video_duration}")
-            
+
             logger.info(f"场景视频处理: 音频时长={audio_duration:.2f}s, 视频时长={video_duration:.2f}s")
-            
+
             # 输出文件名：使用 task_id 前缀
             if task_id:
                 output_filename = f"{task_id}_scene_{segment.segment_id}.mp4"
             else:
                 output_filename = f"scene_{segment.segment_id}.mp4"
             output_path = os.path.join(self.output_dir, output_filename)
-            
+
             # 使用 ffmpeg 处理：替换音频，并调整视频长度
-            success = self._replace_audio_in_video(video_path, segment.audio_path, output_path, audio_duration)
-            
+            success = await self._replace_audio_in_video(video_path, segment.audio_path, output_path, audio_duration)
+
             if not success or not os.path.exists(output_path):
                 logger.error(f"场景视频处理失败，输出文件不存在")
                 raise Exception("场景视频处理失败，输出文件不存在")
-            
+
             # 更新段落信息
             segment.video_path = output_path
             segment.duration = audio_duration
             segment.output_path = output_path
-            
+
             logger.info(f"场景视频 {segment.segment_id} 处理完成: {output_path}")
-            
+
             return VideoSegmentResult(
                 segment_id=segment.segment_id,
                 audio_path=segment.audio_path,
@@ -796,7 +798,7 @@ class VideoSynthesizer:
                 duration=audio_duration,
                 status="success"
             )
-            
+
         except Exception as e:
             logger.error(f"处理场景视频 {segment.segment_id} 失败: {e}")
             return VideoSegmentResult(
@@ -808,11 +810,9 @@ class VideoSynthesizer:
                 error_message=str(e)
             )
     
-    def _get_audio_duration(self, audio_path: str) -> float:
+    async def _get_audio_duration(self, audio_path: str) -> float:
         """获取音频时长"""
         try:
-            import subprocess
-            
             cmd = [
                 'ffprobe',
                 '-v', 'error',
@@ -820,24 +820,24 @@ class VideoSynthesizer:
                 '-of', 'default=noprint_wrappers=1:nokey=1',
                 audio_path
             ]
-            
+
             logger.info(f"执行 ffprobe 获取音频时长: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, timeout=30, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            
-            if result.returncode != 0:
-                stderr = result.stderr.decode('utf-8', errors='ignore')
-                logger.error(f"ffprobe 执行失败: {stderr}")
+            returncode, stdout, stderr = await async_run_subprocess(cmd, timeout=30)
+
+            if returncode != 0:
+                stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+                logger.error(f"ffprobe 执行失败: {stderr_text}")
                 return -1.0
-            
-            duration_str = result.stdout.decode('utf-8', errors='ignore').strip()
+
+            duration_str = stdout.decode('utf-8', errors='ignore').strip()
             if not duration_str:
                 logger.error(f"ffprobe 返回空结果")
                 return -1.0
-            
+
             duration = float(duration_str)
             logger.info(f"音频时长获取成功: {duration:.2f}s")
             return duration
-            
+
         except subprocess.TimeoutExpired:
             logger.error(f"获取音频时长超时: {audio_path}")
             return -1.0
@@ -848,33 +848,31 @@ class VideoSynthesizer:
             logger.error(f"获取音频时长失败: {e}")
             return -1.0
     
-    def _replace_audio_in_video(self, video_path: str, audio_path: str, output_path: str, target_duration: float) -> bool:
+    async def _replace_audio_in_video(self, video_path: str, audio_path: str, output_path: str, target_duration: float) -> bool:
         """
         替换视频中的音频，并确保输出时长等于目标音频时长
-        
+
         Args:
             video_path: 输入视频路径
             audio_path: 新音频路径
             output_path: 输出路径
             target_duration: 目标时长（音频时长）
-            
+
         Returns:
             是否成功
         """
-        import subprocess
-        
-        video_duration = self._get_video_duration(video_path)
-        
+        video_duration = await self._get_video_duration(video_path)
+
         if video_duration <= 0:
             logger.error(f"无法获取视频时长: {video_duration}")
             return False
-        
+
         logger.info(f"视频时长: {video_duration:.2f}s, 目标时长: {target_duration:.2f}s")
-        
+
         if target_duration <= video_duration:
             # 音频时长小于等于视频时长：直接裁剪视频
             cmd = [
-                'ffmpeg', '-y',
+                'ffmpeg',
                 '-i', video_path,
                 '-i', audio_path,
                 '-c:v', 'copy',
@@ -889,9 +887,9 @@ class VideoSynthesizer:
             import math
             loop_count = int(math.ceil(target_duration / video_duration))
             logger.info(f"需要循环播放视频 {loop_count} 次")
-            
+
             cmd = [
-                'ffmpeg', '-y',
+                'ffmpeg',
                 '-stream_loop', str(loop_count - 1),
                 '-i', video_path,
                 '-i', audio_path,
@@ -903,15 +901,15 @@ class VideoSynthesizer:
                 '-shortest',
                 output_path
             ]
-        
+
         logger.info(f"执行 ffmpeg 处理场景视频: {' '.join(cmd)}")
-        result = subprocess.run(cmd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-        
-        if result.returncode != 0:
-            stderr = result.stderr.decode('utf-8', errors='ignore')
-            logger.error(f"ffmpeg 执行失败: {stderr}")
+        returncode, stdout, stderr = await async_run_ffmpeg(cmd, timeout=120)
+
+        if returncode != 0:
+            stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+            logger.error(f"ffmpeg 执行失败: {stderr_text}")
             return False
-        
+
         logger.info(f"ffmpeg 执行成功，输出: {output_path}")
         return True
 
@@ -1246,7 +1244,7 @@ class VideoSynthesizer:
 
         return output_path
 
-    def _get_video_duration(self, video_path: str) -> float:
+    async def _get_video_duration(self, video_path: str) -> float:
         """获取视频时长"""
         try:
             import cv2
@@ -1262,7 +1260,7 @@ class VideoSynthesizer:
             logger.error(f"获取视频时长时发生异常: {e}")
             raise
 
-    def concatenate_videos(
+    async def concatenate_videos(
         self,
         video_paths: List[str],
         output_path: str,
@@ -1283,22 +1281,20 @@ class VideoSynthesizer:
             return False
 
         try:
-            import subprocess
-
             # 如果有独立音频，先合并音频
             if audio_paths:
                 temp_video = output_path.replace(".mp4", "_temp.mp4")
-                self._concat_videos_simple(video_paths, temp_video)
+                await self._concat_videos_simple(video_paths, temp_video)
 
                 # 合并音频
-                self._merge_audio_video(temp_video, audio_paths, output_path)
+                await self._merge_audio_video(temp_video, audio_paths, output_path)
 
                 # 清理临时文件
                 if os.path.exists(temp_video):
                     os.remove(temp_video)
             else:
                 # 直接合并视频
-                self._concat_videos_simple(video_paths, output_path)
+                await self._concat_videos_simple(video_paths, output_path)
 
             logger.info(f"视频合并成功: {output_path}")
             return True
@@ -1307,19 +1303,17 @@ class VideoSynthesizer:
             logger.error(f"视频合并失败: {e}")
             return False
 
-    def _concat_videos(self, video_paths: List[str], task_id: str) -> Optional[str]:
+    async def _concat_videos(self, video_paths: List[str], task_id: str) -> Optional[str]:
         """
         合并多个视频文件
-        
+
         Args:
             video_paths: 视频文件路径列表
             task_id: 任务ID
-            
+
         Returns:
             合并后的视频路径，失败返回 None
         """
-        import subprocess
-        
         if not video_paths:
             logger.warning("没有视频文件需要合并")
             return None
@@ -1339,7 +1333,7 @@ class VideoSynthesizer:
             for path in video_paths:
                 if not os.path.isabs(path):
                     path = os.path.abspath(path)
-                info = self._get_video_info(path)
+                info = await self._get_video_info(path)
                 if info:
                     video_infos.append((path, info))
                     # 使用最大的分辨率作为目标
@@ -1378,7 +1372,7 @@ class VideoSynthesizer:
                 if needs_normalize_all or (info and self._check_video_needs_normalize(info)):
                     # 标准化视频
                     normalized_path = os.path.join(self.output_dir, f"normalized_{task_id}_{i}.mp4")
-                    if self._normalize_video_with_resolution(path, normalized_path, target_width, target_height, target_fps):
+                    if await self._normalize_video_with_resolution(path, normalized_path, target_width, target_height, target_fps):
                         normalized_paths.append(normalized_path)
                         logger.info(f"视频标准化完成: {path} -> {normalized_path}")
                     else:
@@ -1397,8 +1391,9 @@ class VideoSynthesizer:
                     f.write(f"file '{escaped_path}'\n")
             
             # 使用重新编码的方式合并，确保所有视频参数一致
+            # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
             cmd = [
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "ffmpeg", "-f", "concat", "-safe", "0",
                 "-i", list_file,
                 "-c:v", "libx264",
                 "-preset", "medium",
@@ -1408,14 +1403,14 @@ class VideoSynthesizer:
                 "-movflags", "+faststart",
                 output_path
             ]
-            
+
             logger.info(f"执行视频合并命令: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
+
             # 清理临时文件
             if os.path.exists(list_file):
                 os.remove(list_file)
-            
+
             # 清理标准化后的临时视频文件
             for path in normalized_paths:
                 if "normalized_" in path and os.path.exists(path):
@@ -1424,19 +1419,20 @@ class VideoSynthesizer:
                         logger.debug(f"清理临时标准化视频: {path}")
                     except Exception as e:
                         logger.warning(f"清理临时文件失败: {path}, 错误: {e}")
-            
-            if result.returncode == 0:
+
+            if returncode == 0:
                 logger.info(f"视频合并成功: {output_path}")
                 return output_path
             else:
-                logger.error(f"视频合并失败: {result.stderr}")
+                stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+                logger.error(f"视频合并失败: {stderr_text}")
                 return None
 
         except Exception as e:
             logger.error(f"视频合并时发生异常: {e}")
             return None
 
-    def _concat_videos_with_transition(
+    async def _concat_videos_with_transition(
         self,
         video_paths: List[str],
         task_id: str,
@@ -1470,7 +1466,7 @@ class VideoSynthesizer:
                 all_metadata = []
                 for path in video_paths:
                     if os.path.exists(path):
-                        info = self._get_video_info(path)
+                        info = await self._get_video_info(path)
                         if info:
                             all_metadata.append(info)
 
@@ -1493,7 +1489,7 @@ class VideoSynthesizer:
                         logger.warning(f"视频文件不存在，跳过: {video_path}")
                         continue
 
-                    info = self._get_video_info(video_path)
+                    info = await self._get_video_info(video_path)
 
                     # 标准化视频
                     normalized_path = os.path.join(temp_dir, f"normalized_{i:03d}.mp4")
@@ -1505,7 +1501,7 @@ class VideoSynthesizer:
                     )
 
                     if needs_normalize:
-                        if self._normalize_video_with_resolution(video_path, normalized_path, target_width, target_height, target_fps):
+                        if await self._normalize_video_with_resolution(video_path, normalized_path, target_width, target_height, target_fps):
                             normalized_paths.append(normalized_path)
                         else:
                             logger.warning(f"视频标准化失败，使用原始视频: {video_path}")
@@ -1514,7 +1510,7 @@ class VideoSynthesizer:
                         normalized_paths.append(video_path)
 
                     # 获取视频时长
-                    duration = self._get_video_duration(normalized_paths[-1])
+                    duration = await self._get_video_duration(normalized_paths[-1])
                     video_durations.append(duration)
 
                 if len(normalized_paths) < 2:
@@ -1554,7 +1550,8 @@ class VideoSynthesizer:
                 full_filter_complex = f"{filter_complex};{audio_filter}"
 
                 # 5. 执行 FFmpeg 命令
-                cmd = ["ffmpeg", "-y"]
+                # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
+                cmd = ["ffmpeg"]
 
                 for path in normalized_paths:
                     cmd.extend(["-i", path])
@@ -1572,15 +1569,11 @@ class VideoSynthesizer:
                 ])
 
                 logger.info(f"转场合并命令: {' '.join(cmd)}")
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
-                )
+                returncode, stdout, stderr = await async_run_ffmpeg(cmd)
 
-                if result.returncode != 0:
-                    logger.error(f"转场合并失败: {result.stderr}")
+                if returncode != 0:
+                    stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+                    logger.error(f"转场合并失败: {stderr_text}")
                     return None
 
                 logger.info(f"转场合并成功: {output_path}")
@@ -1684,7 +1677,7 @@ class VideoSynthesizer:
             logger.error(f"构建 xfade 滤镜链失败: {e}")
             return None
 
-    def _get_video_duration(self, video_path: str) -> float:
+    async def _get_video_duration(self, video_path: str) -> float:
         """
         获取视频时长
 
@@ -1694,7 +1687,7 @@ class VideoSynthesizer:
         Returns:
             视频时长（秒）
         """
-        info = self._get_video_info(video_path)
+        info = await self._get_video_info(video_path)
         if info and 'duration' in info:
             return info['duration']
 
@@ -1706,41 +1699,37 @@ class VideoSynthesizer:
                 "-of", "default=noprint_wrappers=1:nokey=1",
                 video_path
             ]
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                return float(result.stdout.strip())
+            returncode, stdout, stderr = await async_run_subprocess(cmd, timeout=30)
+            if returncode == 0 and stdout:
+                stdout_text = stdout.decode('utf-8', errors='ignore').strip()
+                if stdout_text:
+                    return float(stdout_text)
         except Exception as e:
             logger.warning(f"获取视频时长失败: {e}")
 
         return 0.0
 
-    def _concat_audio_files(self, audio_files: List[str], output_path: str) -> bool:
+    async def _concat_audio_files(self, audio_files: List[str], output_path: str) -> bool:
         """
         合并多个音频文件
-        
+
         Args:
             audio_files: 音频文件路径列表
             output_path: 输出文件路径
-            
+
         Returns:
             是否成功
         """
-        import subprocess
         import uuid
-        
+
         if not audio_files:
             logger.warning("没有音频文件需要合并")
             return False
-        
+
         try:
             # 使用 concat 协议
             concat_file = os.path.join(self.output_dir, f"concat_{uuid.uuid4().hex[:8]}.txt")
-            
+
             with open(concat_file, 'w', encoding='utf-8') as f:
                 for audio_path in audio_files:
                     # 转换为绝对路径
@@ -1750,7 +1739,8 @@ class VideoSynthesizer:
                         # 路径中可能包含特殊字符，需要转义
                         escaped_path = audio_path.replace("'", "'\\''")
                         f.write(f"file '{escaped_path}'\n")
-            
+
+            # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
             cmd = [
                 "ffmpeg",
                 "-f", "concat",
@@ -1759,58 +1749,56 @@ class VideoSynthesizer:
                 "-c:a", "pcm_s16le",
                 "-ar", "16000",
                 "-ac", "1",
-                "-y",
                 output_path
             ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            
+
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
+
             # 清理临时文件
             if os.path.exists(concat_file):
                 os.remove(concat_file)
-            
-            if result.returncode == 0:
+
+            if returncode == 0:
                 return True
             else:
-                logger.error(f"合并音频失败: {result.stderr}")
+                stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+                logger.error(f"合并音频失败: {stderr_text}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"合并音频时发生异常: {e}")
             return False
 
-    def _concat_videos_simple(self, video_paths: List[str], output_path: str):
+    async def _concat_videos_simple(self, video_paths: List[str], output_path: str):
         """简单合并视频（无音频）"""
-        import subprocess
-
         # 创建临时文件列表
         list_file = os.path.join(self.output_dir, "concat_list.txt")
         with open(list_file, 'w', encoding='utf-8') as f:
             for path in video_paths:
                 f.write(f"file '{path}'\n")
 
+        # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
         cmd = [
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "ffmpeg", "-f", "concat", "-safe", "0",
             "-i", list_file, "-c", "copy", output_path
         ]
 
-        subprocess.run(cmd, check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+        await async_run_ffmpeg(cmd, check=True)
         os.remove(list_file)
 
-    def _extract_audio_from_video(self, video_path: str, output_audio_path: str) -> bool:
+    async def _extract_audio_from_video(self, video_path: str, output_audio_path: str) -> bool:
         """
         从视频中提取音频
-        
+
         Args:
             video_path: 视频文件路径
             output_audio_path: 输出音频文件路径
-            
+
         Returns:
             是否成功
         """
-        import subprocess
-        
         try:
+            # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
             cmd = [
                 "ffmpeg",
                 "-i", video_path,
@@ -1818,24 +1806,24 @@ class VideoSynthesizer:
                 "-acodec", "pcm_s16le",
                 "-ar", "16000",
                 "-ac", "1",
-                "-y",
                 output_audio_path
             ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            
-            if result.returncode == 0 and os.path.exists(output_audio_path):
+
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
+
+            if returncode == 0 and os.path.exists(output_audio_path):
                 logger.info(f"从视频中提取音频成功: {output_audio_path}")
                 return True
             else:
-                logger.error(f"从视频中提取音频失败: {result.stderr}")
+                stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+                logger.error(f"从视频中提取音频失败: {stderr_text}")
                 return False
-                
+
         except Exception as e:
             logger.error(f"提取音频时发生异常: {e}")
             return False
     
-    def _merge_left_right_audio_to_video(
+    async def _merge_left_right_audio_to_video(
         self,
         video_path: str,
         left_audio_path: str,
@@ -1844,24 +1832,23 @@ class VideoSynthesizer:
     ) -> Optional[str]:
         """
         合并左右音频到视频（双人模式）
-        
+
         Args:
             video_path: 第二次 HeyGem 生成的视频（只有右边声音）
             left_audio_path: 从第一次结果提取的左边音频
             right_audio_path: 原始的右边音频
             output_path: 最终输出视频路径
-            
+
         Returns:
             最终视频路径，失败返回 None
         """
-        import subprocess
-        
         try:
             # 先合并左右音频
             combined_audio = os.path.join(self.output_dir, f"combined_{os.path.basename(output_path).replace('.mp4', '')}.wav")
-            
+
             if left_audio_path and right_audio_path:
                 # 同时有左右音频，使用 amix 混合并保持音量
+                # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
                 cmd = [
                     "ffmpeg",
                     "-i", left_audio_path,
@@ -1869,7 +1856,6 @@ class VideoSynthesizer:
                     "-filter_complex", "amix=inputs=2:duration=longest,volume=2",
                     "-ac", "1",
                     "-ar", "16000",
-                    "-y",
                     combined_audio
                 ]
             elif left_audio_path:
@@ -1883,18 +1869,19 @@ class VideoSynthesizer:
             else:
                 logger.error("没有可用的音频文件")
                 return None
-            
+
             # 执行音频合并（如果需要）
             if left_audio_path and right_audio_path:
-                result = subprocess.run(cmd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-                if result.returncode != 0:
-                    stderr = result.stderr.decode('utf-8', errors='ignore')
-                    logger.error(f"合并左右音频失败: {stderr}")
+                returncode, stdout, stderr = await async_run_ffmpeg(cmd)
+                if returncode != 0:
+                    stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+                    logger.error(f"合并左右音频失败: {stderr_text}")
                     return None
-            
+
             # 将合并后的音频替换到视频中
             final_output = output_path
-            
+
+            # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
             cmd = [
                 "ffmpeg",
                 "-i", video_path,
@@ -1904,37 +1891,34 @@ class VideoSynthesizer:
                 "-map", "0:v:0",
                 "-map", "1:a:0",
                 "-shortest",
-                "-y",
                 final_output
             ]
-            
-            result = subprocess.run(cmd, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            
+
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
+
             # 清理临时文件
             if os.path.exists(combined_audio):
                 os.remove(combined_audio)
-            
-            if result.returncode == 0 and os.path.exists(final_output):
+
+            if returncode == 0 and os.path.exists(final_output):
                 logger.info(f"合并左右音频到视频成功: {final_output}")
                 return final_output
             else:
-                stderr = result.stderr.decode('utf-8', errors='ignore')
-                logger.error(f"合并音频到视频失败: {stderr}")
+                stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+                logger.error(f"合并音频到视频失败: {stderr_text}")
                 return None
-                
+
         except Exception as e:
             logger.error(f"合并左右音频时发生异常: {e}")
             return None
     
-    def _merge_audio_video(
+    async def _merge_audio_video(
         self,
         video_path: str,
         audio_paths: List[str],
         output_path: str
     ):
         """合并音频和视频"""
-        import subprocess
-
         # 先合并所有音频
         concat_audio = os.path.join(self.output_dir, "concat_audio.wav")
 
@@ -1943,38 +1927,38 @@ class VideoSynthesizer:
             for path in audio_paths:
                 f.write(f"file '{path}'\n")
 
+        # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
         cmd = [
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "ffmpeg", "-f", "concat", "-safe", "0",
             "-i", list_file, "-c", "copy", concat_audio
         ]
-        subprocess.run(cmd, check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+        await async_run_ffmpeg(cmd, check=True)
         os.remove(list_file)
 
         # 合并音频和视频
         cmd = [
-            "ffmpeg", "-y", "-i", video_path, "-i", concat_audio,
+            "ffmpeg", "-i", video_path, "-i", concat_audio,
             "-c:v", "copy", "-c:a", "aac", "-strict", "experimental",
             output_path
         ]
-        subprocess.run(cmd, check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+        await async_run_ffmpeg(cmd, check=True)
 
         # 清理临时音频
         if os.path.exists(concat_audio):
             os.remove(concat_audio)
 
-    def _get_video_info(self, video_path: str) -> Optional[Dict[str, Any]]:
+    async def _get_video_info(self, video_path: str) -> Optional[Dict[str, Any]]:
         """
         获取视频信息（分辨率、帧率、编码等）
-        
+
         Args:
             video_path: 视频文件路径
-            
+
         Returns:
             视频信息字典，失败返回 None
         """
-        import subprocess
         import json
-        
+
         try:
             cmd = [
                 "ffprobe",
@@ -1984,28 +1968,30 @@ class VideoSynthesizer:
                 "-show_streams",
                 video_path
             ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            
-            if result.returncode != 0:
-                logger.error(f"ffprobe 执行失败: {result.stderr}")
+
+            returncode, stdout, stderr = await async_run_subprocess(cmd, timeout=30)
+
+            if returncode != 0:
+                stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+                logger.error(f"ffprobe 执行失败: {stderr_text}")
                 return None
-            
-            data = json.loads(result.stdout)
-            
+
+            stdout_text = stdout.decode('utf-8', errors='ignore') if stdout else ''
+            data = json.loads(stdout_text)
+
             video_stream = None
             audio_stream = None
-            
+
             for stream in data.get("streams", []):
                 if stream.get("codec_type") == "video" and video_stream is None:
                     video_stream = stream
                 elif stream.get("codec_type") == "audio" and audio_stream is None:
                     audio_stream = stream
-            
+
             if not video_stream:
                 logger.error(f"视频文件中没有视频流: {video_path}")
                 return None
-            
+
             # 解析帧率
             fps_str = video_stream.get("r_frame_rate", "30/1")
             if "/" in fps_str:
@@ -2013,7 +1999,7 @@ class VideoSynthesizer:
                 fps = float(num) / float(den) if float(den) != 0 else 30.0
             else:
                 fps = float(fps_str)
-            
+
             return {
                 "width": video_stream.get("width", 0),
                 "height": video_stream.get("height", 0),
@@ -2023,7 +2009,7 @@ class VideoSynthesizer:
                 "has_audio": audio_stream is not None,
                 "audio_codec": audio_stream.get("codec_name", "") if audio_stream else None
             }
-            
+
         except Exception as e:
             logger.error(f"获取视频信息失败: {e}")
             return None
@@ -2063,34 +2049,33 @@ class VideoSynthesizer:
         
         return False
 
-    def _normalize_video(self, input_path: str, output_path: str) -> bool:
+    async def _normalize_video(self, input_path: str, output_path: str) -> bool:
         """
         标准化视频（统一编码、帧率）
-        
+
         Args:
             input_path: 输入视频路径
             output_path: 输出视频路径
-            
+
         Returns:
             是否成功
         """
-        import subprocess
-        
         try:
             # 获取输入视频信息
-            video_info = self._get_video_info(input_path)
+            video_info = await self._get_video_info(input_path)
             if not video_info:
                 logger.error(f"无法获取视频信息: {input_path}")
                 return False
-            
+
             # 标准化参数
             # 保持原始分辨率，统一编码为 h264，帧率保持原样或转为 30fps
             fps = video_info.get("fps", 30)
             if fps < 20 or fps > 60:
                 fps = 30
-            
+
+            # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
             cmd = [
-                "ffmpeg", "-y",
+                "ffmpeg",
                 "-i", input_path,
                 "-c:v", "libx264",
                 "-preset", "medium",
@@ -2101,17 +2086,18 @@ class VideoSynthesizer:
                 "-movflags", "+faststart",
                 output_path
             ]
-            
+
             logger.info(f"执行视频标准化: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            
-            if result.returncode == 0 and os.path.exists(output_path):
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd, timeout=600)
+
+            if returncode == 0 and os.path.exists(output_path):
                 logger.info(f"视频标准化成功: {output_path}")
                 return True
             else:
-                logger.error(f"视频标准化失败: {result.stderr}")
+                stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+                logger.error(f"视频标准化失败: {stderr_text}")
                 return False
-                
+
         except subprocess.TimeoutExpired:
             logger.error(f"视频标准化超时: {input_path}")
             return False
@@ -2119,30 +2105,29 @@ class VideoSynthesizer:
             logger.error(f"视频标准化异常: {e}")
             return False
 
-    def _normalize_video_with_resolution(self, input_path: str, output_path: str, target_width: int, target_height: int, target_fps: float) -> bool:
+    async def _normalize_video_with_resolution(self, input_path: str, output_path: str, target_width: int, target_height: int, target_fps: float) -> bool:
         """
         标准化视频（统一分辨率、编码、帧率）
-        
+
         Args:
             input_path: 输入视频路径
             output_path: 输出视频路径
             target_width: 目标宽度
             target_height: 目标高度
             target_fps: 目标帧率
-            
+
         Returns:
             是否成功
         """
-        import subprocess
-        
         try:
             # 使用 scale 滤镜缩放视频，同时统一编码和帧率
             # scale 参数：force_original_aspect_ratio=decrease 保持宽高比，不超过目标尺寸
             # pad 参数：填充到目标尺寸
             scale_filter = f"scale={target_width}:{target_height}:force_original_aspect_ratio=decrease,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:black"
-            
+
+            # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
             cmd = [
-                "ffmpeg", "-y",
+                "ffmpeg",
                 "-i", input_path,
                 "-vf", scale_filter,
                 "-r", str(target_fps),
@@ -2154,17 +2139,18 @@ class VideoSynthesizer:
                 "-movflags", "+faststart",
                 output_path
             ]
-            
+
             logger.info(f"执行视频标准化（分辨率: {target_width}x{target_height}, 帧率: {target_fps}）: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            
-            if result.returncode == 0 and os.path.exists(output_path):
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd, timeout=600)
+
+            if returncode == 0 and os.path.exists(output_path):
                 logger.info(f"视频标准化成功: {output_path}")
                 return True
             else:
-                logger.error(f"视频标准化失败: {result.stderr}")
+                stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+                logger.error(f"视频标准化失败: {stderr_text}")
                 return False
-                
+
         except subprocess.TimeoutExpired:
             logger.error(f"视频标准化超时: {input_path}")
             return False

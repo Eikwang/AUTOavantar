@@ -237,14 +237,24 @@ const allCompletedItems = computed(() => {
   }))
 
   // 收集已完成任务的 output_path，用于去重
+  // 统一使用相对路径格式（output/xxx.mp4）进行比较，确保跨数据源去重有效
+  const normalizePath = (p) => {
+    if (!p) return ''
+    const normalized = p.replace(/\\/g, '/')
+    // 如果是绝对路径，提取 output/ 部分
+    if (normalized.includes('output/')) {
+      return normalized.substring(normalized.lastIndexOf('output/'))
+    }
+    return normalized
+  }
   const taskOutputPaths = new Set(
     completedTasks.value
       .filter(t => t.output_path && t.status !== 'failed')
-      .map(t => t.output_path.replace(/\\/g, '/'))
+      .map(t => normalizePath(t.output_path))
   )
 
   const mergedItems = mergedVideos.value
-    .filter(video => !taskOutputPaths.has(video.path.replace(/\\/g, '/')))
+    .filter(video => !taskOutputPaths.has(normalizePath(video.path)))
     .map(video => ({
       _key: video.path,
       _type: 'merged',

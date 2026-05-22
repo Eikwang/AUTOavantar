@@ -12,6 +12,8 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from pathlib import Path
 
+from api.utils.async_subprocess import async_run_subprocess, async_run_ffmpeg, async_run_ffprobe
+
 from core.models.task import ScriptSegment, Task, TaskConfig
 
 logger = logging.getLogger(__name__)
@@ -142,7 +144,7 @@ class AudioProcessor:
             logger.error(f"音频降噪失败: {e}")
             raise
 
-    def _extract_audio_from_video(self, video_path: str) -> Optional[str]:
+    async def _extract_audio_from_video(self, video_path: str) -> Optional[str]:
         """
         从视频中提取音频
 
@@ -152,32 +154,31 @@ class AudioProcessor:
         Returns:
             提取的音频文件路径，失败则返回 None
         """
-        import subprocess
         import os
-        
+
         # 生成输出音频路径
         audio_filename = os.path.splitext(os.path.basename(video_path))[0] + ".wav"
         audio_path = os.path.join(self.output_dir, audio_filename)
-        
+
         # 使用 ffmpeg 提取音频
         cmd = [
             "ffmpeg",
             "-i", video_path,
-            "-y",
             "-vn",  # 不包含视频
             "-acodec", "pcm_s16le",  # 音频编码
             "-ar", "16000",  # 采样率
             "-ac", "1",  # 声道数
             audio_path
         ]
-        
+
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            if result.returncode == 0:
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
+            if returncode == 0:
                 logger.info(f"从视频中提取音频成功：{audio_path}")
                 return audio_path
             else:
-                logger.error(f"从视频中提取音频失败：{result.stderr}")
+                _err = stderr.decode() if stderr else ""
+                logger.error(f"从视频中提取音频失败：{_err}")
                 return None
         except Exception as e:
             logger.error(f"从视频中提取音频时发生异常：{e}")
@@ -370,7 +371,7 @@ class AudioProcessor:
                 tone=getattr(segment, 'tone', None)
             )
 
-    def synthesize_all(
+    async def synthesize_all(
         self,
         task: Task,
         config: TaskConfig,
@@ -590,7 +591,7 @@ class AudioProcessor:
             if results:
                 try:
                     logger.info("合并同一说话人的音频...")
-                    self._merge_speaker_audios(task, results, config)
+                    await self._merge_speaker_audios(task, results, config)
                 except Exception as e:
                     logger.error(f"合并音频失败: {e}")
         else:
@@ -602,7 +603,7 @@ class AudioProcessor:
                 # 从开场视频中提取音频
                 video_path = task.opening_video or task.source_video_path
                 if video_path and os.path.exists(video_path):
-                    prompt_audio = self._extract_audio_from_video(video_path)
+                    prompt_audio = await self._extract_audio_from_video(video_path)
                     if not prompt_audio:
                         logger.error("从开场视频中提取音频失败")
                         for segment in task.segments:
@@ -713,7 +714,7 @@ class AudioProcessor:
 
         return results
 
-    def _merge_speaker_audios(self, task: Task, results: List[AudioSegmentResult], config: TaskConfig = None):
+    async def _merge_speaker_audios(self, task: Task, results: List[AudioSegmentResult], config: TaskConfig = None):
         """
         合并同一说话人的音频并添加静音（按标签分组对齐）
 
@@ -734,7 +735,6 @@ class AudioProcessor:
             config: 任务配置（用于获取转场时长）
         """
         import os
-        import subprocess
         from collections import defaultdict
         
         if not results:
@@ -817,7 +817,7 @@ class AudioProcessor:
                                 left_merged_for_scene = os.path.join(self.output_dir, f"left_{tone}_{task.task_id}.wav")
                                 left_audio_paths = [seg.audio_path for seg in left_segments if seg.audio_path]
                                 if left_audio_paths:
-                                    if self._concat_audio_files(left_audio_paths, left_merged_for_scene):
+                                    if await self._concat_audio_files(left_audio_paths, left_merged_for_scene):
                                         left_aligned_path = left_merged_for_scene
                             
                             # 合并右边说话人音频
@@ -825,7 +825,7 @@ class AudioProcessor:
                                 right_merged_for_scene = os.path.join(self.output_dir, f"right_{tone}_{task.task_id}.wav")
                                 right_audio_paths = [seg.audio_path for seg in right_segments if seg.audio_path]
                                 if right_audio_paths:
-                                    if self._concat_audio_files(right_audio_paths, right_merged_for_scene):
+                                    if await self._concat_audio_files(right_audio_paths, right_merged_for_scene):
                                         right_aligned_path = right_merged_for_scene
                         else:
                             # 非场景标签：进行音频对齐
@@ -837,7 +837,7 @@ class AudioProcessor:
                                 logger.info(f"标签 '{tone}' 启用转场效果，缓冲时长: {transition_buffer:.2f}秒")
 
                             if left_segments:
-                                left_aligned = self._create_aligned_audio_for_tone(
+                                left_aligned = await self._create_aligned_audio_for_tone(
                                     segments=left_segments,
                                     silence_duration=right_duration,
                                     speaker="left",
@@ -852,7 +852,7 @@ class AudioProcessor:
                                     logger.info(f"标签 '{tone}' 左边音频对齐完成: {left_aligned}")
 
                             if right_segments:
-                                right_aligned = self._create_aligned_audio_for_tone(
+                                right_aligned = await self._create_aligned_audio_for_tone(
                                     segments=right_segments,
                                     silence_duration=left_duration,
                                     speaker="right",
@@ -899,7 +899,7 @@ class AudioProcessor:
             if not hasattr(task, 'tone_audio_paths'):
                 task.tone_audio_paths = {}
     
-    def _create_aligned_audio_for_tone(
+    async def _create_aligned_audio_for_tone(
         self,
         segments: List[AudioSegmentResult],
         silence_duration: float,
@@ -924,7 +924,6 @@ class AudioProcessor:
         Returns:
             对齐后的音频文件路径，失败返回 None
         """
-        import subprocess
         
         if not segments:
             return None
@@ -974,17 +973,17 @@ class AudioProcessor:
                 "-c:a", "pcm_s16le",
                 "-ar", "16000",
                 "-ac", "1",
-                "-y",
                 temp_merged_path
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
 
             if os.path.exists(temp_concat_file):
                 os.remove(temp_concat_file)
 
-            if result.returncode != 0:
-                logger.error(f"合并标签 '{tone}' {speaker} 音频段落失败: {result.stderr}")
+            if returncode != 0:
+                _err = stderr.decode() if stderr else ""
+                logger.error(f"合并标签 '{tone}' {speaker} 音频段落失败: {_err}")
                 return None
 
             # 步骤2：添加静音（包括对齐静音和转场缓冲静音）
@@ -1033,7 +1032,6 @@ class AudioProcessor:
                     "-c:a", "pcm_s16le",
                     "-ar", "16000",
                     "-ac", "1",
-                    "-y",
                     output_path
                 ]
             else:
@@ -1042,13 +1040,14 @@ class AudioProcessor:
                     os.rename(temp_merged_path, output_path)
                     return output_path
 
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
 
             if os.path.exists(temp_merged_path):
                 os.remove(temp_merged_path)
 
-            if result.returncode != 0:
-                logger.error(f"添加静音失败: {result.stderr}")
+            if returncode != 0:
+                _err = stderr.decode() if stderr else ""
+                logger.error(f"添加静音失败: {_err}")
                 return None
 
             if os.path.exists(output_path):
@@ -1060,7 +1059,7 @@ class AudioProcessor:
             logger.error(f"创建对齐音频时发生异常: {e}")
             return None
     
-    def _generate_silence_file(self, duration: float) -> Optional[str]:
+    async def _generate_silence_file(self, duration: float) -> Optional[str]:
         """
         生成静音音频文件
 
@@ -1075,8 +1074,7 @@ class AudioProcessor:
 
         try:
             import tempfile
-            import subprocess
-
+    
             # 创建临时静音文件
             silence_path = os.path.join(self.output_dir, f"silence_{uuid.uuid4().hex[:8]}.wav")
 
@@ -1086,26 +1084,26 @@ class AudioProcessor:
                 "-i", f"anullsrc=r=16000:cl=mono",
                 "-t", str(duration),
                 "-c:a", "pcm_s16le",
-                "-y",
                 silence_path
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            if result.returncode == 0 and os.path.exists(silence_path):
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
+            if returncode == 0 and os.path.exists(silence_path):
                 # 追踪生成的静音文件，供后续清理
                 if not hasattr(self, '_silence_files'):
                     self._silence_files = []
                 self._silence_files.append(silence_path)
                 return silence_path
             else:
-                logger.error(f"生成静音文件失败: {result.stderr}")
+                _err = stderr.decode() if stderr else ""
+                logger.error(f"生成静音文件失败: {_err}")
                 return None
 
         except Exception as e:
             logger.error(f"生成静音文件时发生异常: {e}")
             return None
     
-    def _concat_audio_files(self, audio_files: List[str], output_path: str) -> bool:
+    async def _concat_audio_files(self, audio_files: List[str], output_path: str) -> bool:
         """
         合并多个音频文件
         
@@ -1116,7 +1114,6 @@ class AudioProcessor:
         Returns:
             是否成功
         """
-        import subprocess
         
         if not audio_files:
             logger.warning("没有音频文件需要合并")
@@ -1147,27 +1144,27 @@ class AudioProcessor:
                 "-c:a", "pcm_s16le",
                 "-ar", "16000",
                 "-ac", "1",
-                "-y",
                 output_path
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
             
             # 清理临时文件
             if os.path.exists(concat_file):
                 os.remove(concat_file)
             
-            if result.returncode == 0:
+            if returncode == 0:
                 return True
             else:
-                logger.error(f"合并音频失败: {result.stderr}")
+                _err = stderr.decode() if stderr else ""
+                logger.error(f"合并音频失败: {_err}")
                 return False
                 
         except Exception as e:
             logger.error(f"合并音频时发生异常: {e}")
             return False
 
-    def _create_aligned_audio(
+    async def _create_aligned_audio(
         self,
         segments: List[AudioSegmentResult],
         silence_duration: float,
@@ -1189,7 +1186,6 @@ class AudioProcessor:
             合并后的音频文件路径，失败返回 None
         """
         import os
-        import subprocess
         
         if not segments:
             logger.error(f"{speaker} 说话人没有音频段落")
@@ -1235,14 +1231,14 @@ class AudioProcessor:
                 "-c:a", "pcm_s16le",
                 "-ar", "16000",
                 "-ac", "1",
-                "-y",
                 temp_merged_path
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
             
-            if result.returncode != 0:
-                logger.error(f"合并音频段落失败: {result.stderr}")
+            if returncode != 0:
+                _err = stderr.decode() if stderr else ""
+                logger.error(f"合并音频段落失败: {_err}")
                 if os.path.exists(temp_concat_file):
                     os.remove(temp_concat_file)
                 return None
@@ -1280,21 +1276,21 @@ class AudioProcessor:
                 "-c:a", "pcm_s16le",
                 "-ar", "16000",
                 "-ac", "1",
-                "-y",
                 output_path
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
             
             # 清理临时文件
             if os.path.exists(temp_merged_path):
                 os.remove(temp_merged_path)
             
-            if result.returncode == 0 and os.path.exists(output_path):
+            if returncode == 0 and os.path.exists(output_path):
                 logger.info(f"{speaker} 说话人时长对齐音频生成成功: {output_path}")
                 return output_path
             else:
-                logger.error(f"{speaker} 说话人时长对齐音频生成失败: {result.stderr}")
+                _err = stderr.decode() if stderr else ""
+                logger.error(f"{speaker} 说话人时长对齐音频生成失败: {_err}")
                 if os.path.exists(output_path):
                     os.remove(output_path)
                 return None
@@ -1474,7 +1470,7 @@ class AudioProcessor:
             logger.error(f"获取音频时长时发生异常: {e}")
             raise
 
-    def concatenate_audio(
+    async def concatenate_audio(
         self,
         audio_paths: List[str],
         output_path: str
@@ -1494,8 +1490,7 @@ class AudioProcessor:
 
         try:
             # 使用 ffmpeg 合并
-            import subprocess
-
+    
             # 创建临时文件列表
             list_file = os.path.join(self.output_dir, "concat_list.txt")
             with open(list_file, 'w', encoding='utf-8') as f:
@@ -1503,11 +1498,11 @@ class AudioProcessor:
                     f.write(f"file '{path}'\n")
 
             cmd = [
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "ffmpeg", "-f", "concat", "-safe", "0",
                 "-i", list_file, "-c", "copy", output_path
             ]
 
-            subprocess.run(cmd, check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            await async_run_ffmpeg(cmd, check=True)
             os.remove(list_file)
 
             logger.info(f"音频合并成功: {output_path}")
@@ -1517,7 +1512,7 @@ class AudioProcessor:
             logger.error(f"音频合并失败: {e}")
             return False
 
-    def add_fade(
+    async def add_fade(
         self,
         audio_path: str,
         fade_in: float = 0.02,
@@ -1534,18 +1529,17 @@ class AudioProcessor:
         Returns:
             处理后的音频路径
         """
-        import subprocess
 
         output_path = audio_path.replace(".wav", "_fade.wav")
 
         cmd = [
-            "ffmpeg", "-y", "-i", audio_path,
+            "ffmpeg", "-i", audio_path,
             "-af", f"afade=t=in:st=0:d={fade_in},afade=t=out:st=-{fade_out}:d={fade_out}",
             output_path
         ]
 
         try:
-            subprocess.run(cmd, check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            await async_run_ffmpeg(cmd, check=True)
             return output_path
         except Exception as e:
             logger.error(f"添加淡入淡出失败: {e}")

@@ -897,8 +897,8 @@ class DatabaseService:
             for key, column in field_mapping.items():
                 if key in updates and updates[key] is not None:
                     update_parts.append(f"{column} = ?")
-                    # segments_info 需要序列化
-                    if key == "segments_info" and not isinstance(updates[key], str):
+                    # segments_info 和 config 需要序列化为 JSON
+                    if key in ("segments_info", "config") and not isinstance(updates[key], str):
                         values.append(json.dumps(updates[key], ensure_ascii=False))
                     else:
                         values.append(updates[key])

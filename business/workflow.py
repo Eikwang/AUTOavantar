@@ -189,6 +189,7 @@ class DigitalHumanWorkflow:
             output_dir=self.video_temp_dir
         )
         self.post_processor = create_post_processor(
+            intermediate_dir=self.output_dir,
             output_dir=self.final_output_dir,
             qwen_api_key=self.qwen_api_key
         )
@@ -202,7 +203,7 @@ class DigitalHumanWorkflow:
         """设置数据库实例用于断点续传"""
         self.db = db
 
-    def run(
+    async def run_async(
         self,
         source_video_path: str,
         script_text: str = "",
@@ -514,7 +515,7 @@ class DigitalHumanWorkflow:
                     # 调节左说话人参考音频
                     if left_speed != 1.0:
                         logger.info(f"调节左说话人参考音频语速: {left_speed}x, 路径: {left_audio_path}")
-                        adjusted_left_audio = speed_processor.adjust_speed(left_audio_path, left_speed)
+                        adjusted_left_audio = await speed_processor.adjust_speed(left_audio_path, left_speed)
                         if adjusted_left_audio:
                             left_prompt_audio_path = adjusted_left_audio
                             task.left_prompt_audio_path = adjusted_left_audio
@@ -525,7 +526,7 @@ class DigitalHumanWorkflow:
                     # 调节右说话人参考音频
                     if right_speed != 1.0:
                         logger.info(f"调节右说话人参考音频语速: {right_speed}x, 路径: {right_audio_path}")
-                        adjusted_right_audio = speed_processor.adjust_speed(right_audio_path, right_speed)
+                        adjusted_right_audio = await speed_processor.adjust_speed(right_audio_path, right_speed)
                         if adjusted_right_audio:
                             right_prompt_audio_path = adjusted_right_audio
                             task.right_prompt_audio_path = adjusted_right_audio
@@ -538,7 +539,7 @@ class DigitalHumanWorkflow:
                     audio_path = task.prompt_audio_path
                     if config.tts_speed != 1.0:
                         logger.info(f"调节参考音频语速: {config.tts_speed}x, 路径: {audio_path}")
-                        adjusted_audio = speed_processor.adjust_speed(audio_path, config.tts_speed)
+                        adjusted_audio = await speed_processor.adjust_speed(audio_path, config.tts_speed)
                         if adjusted_audio:
                             prompt_audio_path = adjusted_audio
                             task.prompt_audio_path = adjusted_audio
@@ -601,7 +602,7 @@ class DigitalHumanWorkflow:
                 if config.enable_double_mode:
                     logger.info(f"双人模式音频合成配置: left_tts_speed={config.left_tts_speed}, right_tts_speed={config.right_tts_speed}, left_tts_emo_weight={config.left_tts_emo_weight}, right_tts_emo_weight={config.right_tts_emo_weight}")
 
-                audio_results = self.audio_processor.synthesize_all(
+                audio_results = await self.audio_processor.synthesize_all(
                     task, config,
                     cancel_callback=cancel_callback,
                     progress_callback=audio_progress_callback
@@ -717,7 +718,7 @@ class DigitalHumanWorkflow:
                         description = build_stage_description("video", completed, total, tag)
                         progress_callback(progress, description)
 
-                video_results = self.video_synthesizer.generate_all(
+                video_results = await self.video_synthesizer.generate_all(
                     task, config,
                     cancel_callback=cancel_callback,
                     progress_callback=video_progress_callback
@@ -771,7 +772,7 @@ class DigitalHumanWorkflow:
             if progress_callback:
                 progress_callback(87, build_stage_description("postprocess", 0, 0, None, "subtitle"))
 
-            post_result = self.post_processor.process(task, config)
+            post_result = await self.post_processor.process(task, config)
 
             if post_result.status == "success":
                 task.output_video_path = post_result.output_path
@@ -858,6 +859,10 @@ class DigitalHumanWorkflow:
                 status="failed",
                 error_message=str(e)
             )
+
+    def run(self, **kwargs) -> WorkflowResult:
+        """同步包装：在独立事件循环中运行 run_async"""
+        return asyncio.run(self.run_async(**kwargs))
 
     def _normalize_video_path(self, video_path: str) -> str:
         """

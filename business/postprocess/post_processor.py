@@ -5,11 +5,11 @@
 
 import logging
 import os
-import platform
 import random
-import subprocess
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
+
+from api.utils.async_subprocess import async_run_subprocess, async_run_ffmpeg, async_run_ffprobe
 
 from core.models.task import Task, TaskConfig, SubtitlePosition
 from business.audio.audio_mixer import AudioMixer
@@ -39,6 +39,7 @@ class PostProcessor:
 
     def __init__(
         self,
+        intermediate_dir: str = "backend/output",
         output_dir: str = "output",
         qwen_api_key: Optional[str] = None
     ):
@@ -46,15 +47,17 @@ class PostProcessor:
         初始化后期处理器
 
         Args:
-            output_dir: 输出目录
+            intermediate_dir: 中间处理目录（字幕、BGM、合并等中间文件存放处）
+            output_dir: 最终输出目录（只有完成全部后期处理的视频才存放此处）
             qwen_api_key: Qwen-Image API 密钥（可选）
         """
+        self.intermediate_dir = intermediate_dir
         self.output_dir = output_dir
         self.qwen_api_key = qwen_api_key
         self.qwen_client = None
-        self.audio_mixer = AudioMixer(temp_dir=os.path.join(output_dir, "temp"))
+        self.audio_mixer = AudioMixer(temp_dir=os.path.join(intermediate_dir, "temp"))
         self.cover_prompt_template = self._load_cover_prompt_template()
-        
+
         # 初始化 Qwen-Image 客户端
         if qwen_api_key:
             try:
@@ -63,7 +66,8 @@ class PostProcessor:
                 logger.info("Qwen-Image 客户端初始化成功")
             except Exception as e:
                 logger.warning(f"Qwen-Image 客户端初始化失败：{e}")
-        
+
+        os.makedirs(intermediate_dir, exist_ok=True)
         os.makedirs(output_dir, exist_ok=True)
 
     def _load_cover_prompt_template(self) -> str:
@@ -81,7 +85,7 @@ class PostProcessor:
             logger.warning(f"加载封面提示词模版失败: {e}")
         return default_template
 
-    def process(
+    async def process(
         self,
         task: Task,
         config: TaskConfig
@@ -128,25 +132,26 @@ class PostProcessor:
             if len(video_paths) == 1:
                 logger.info(f"只有一个视频片段，直接使用原视频: {video_paths[0]}")
                 output_path = video_paths[0]
-                # 复制到输出目录，避免修改原文件
+                # 复制到中间处理目录，避免修改原文件
                 import shutil
-                target_path = os.path.join(
-                    self.output_dir,
+                intermediate_output_path = os.path.join(
+                    self.intermediate_dir,
                     f"{task.task_id}.mp4"
                 )
                 try:
-                    shutil.copy2(output_path, target_path)
+                    shutil.copy2(output_path, intermediate_output_path)
                     # 记录原始视频作为中间文件（双人模式的 merged_*.mp4）
-                    if output_path != target_path:
+                    if output_path != intermediate_output_path:
                         intermediate_files.append(output_path)
-                    output_path = target_path
-                    logger.info(f"已复制视频到输出目录: {output_path}")
+                    output_path = intermediate_output_path
+                    logger.info(f"已复制视频到中间处理目录: {output_path}")
                 except Exception as e:
                     logger.warning(f"复制视频失败，将使用原路径: {e}")
             else:
                 # 多个视频片段，需要合并
-                output_path = os.path.join(
-                    self.output_dir,
+                # 合并输出到中间处理目录
+                intermediate_output_path = os.path.join(
+                    self.intermediate_dir,
                     f"{task.task_id}.mp4"
                 )
 
@@ -155,10 +160,10 @@ class PostProcessor:
                 if config.enable_transition:
                     # 使用转场效果合并
                     logger.info("启用转场效果，使用 xfade 滤镜合并")
-                    success = self._concat_videos_with_transition(video_paths, output_path, config)
+                    success = await self._concat_videos_with_transition(video_paths, intermediate_output_path, config)
                 else:
                     # 使用普通合并
-                    success = self._concat_videos(video_paths, output_path)
+                    success = await self._concat_videos(video_paths, intermediate_output_path)
 
                 if not success:
                     logger.error("视频合并失败")
@@ -168,21 +173,22 @@ class PostProcessor:
                         error_message="视频合并失败"
                     )
 
-                if not os.path.exists(output_path):
-                    logger.error(f"视频合并成功，但文件不存在: {output_path}")
+                if not os.path.exists(intermediate_output_path):
+                    logger.error(f"视频合并成功，但文件不存在: {intermediate_output_path}")
                     return PostProcessResult(
                         output_path=None,
                         status="failed",
                         error_message="视频合并后文件不存在"
                     )
 
-                logger.info(f"视频合并成功: {output_path}")
+                logger.info(f"视频合并成功: {intermediate_output_path}")
+                output_path = intermediate_output_path
 
             # 2. 添加字幕
             subtitle_path = None
             if config.enable_subtitle:
                 logger.info("开始添加字幕...")
-                subtitle_path = self._add_subtitle(
+                subtitle_path = await self._add_subtitle(
                     output_path,
                     task,
                     config
@@ -193,7 +199,7 @@ class PostProcessor:
             # 3. 添加 BGM
             if task.bgm_path:
                 logger.info(f"开始添加 BGM: {task.bgm_path}")
-                output_path = self._add_bgm(
+                output_path = await self._add_bgm(
                     output_path,
                     task.bgm_path,
                     config.bgm_volume
@@ -203,17 +209,33 @@ class PostProcessor:
             cover_path = None
             if config.enable_cover:
                 logger.info("开始生成封面...")
-                cover_path = self._generate_cover(output_path, task, config)
+                cover_path = await self._generate_cover(output_path, task, config)
                 
                 if cover_path and os.path.exists(cover_path):
                     logger.info(f"封面生成成功: {cover_path}，开始插入封面帧...")
-                    output_path = self._insert_cover_frames(output_path, cover_path)
+                    output_path = await self._insert_cover_frames(output_path, cover_path)
                 else:
                     logger.warning("封面生成失败或封面文件不存在，跳过帧插入")
 
-            logger.info(f"后期处理完成，最终输出路径: {output_path}")
+            logger.info(f"后期处理完成，中间输出路径: {output_path}")
+
+            # 将最终结果复制到最终输出目录（根目录 output/）
+            final_output_path = os.path.join(self.output_dir, f"{task.task_id}.mp4")
+            try:
+                import shutil
+                if os.path.abspath(output_path) != os.path.abspath(final_output_path):
+                    shutil.copy2(output_path, final_output_path)
+                    # 中间文件加入清理列表
+                    intermediate_files.append(output_path)
+                    logger.info(f"最终视频已复制到输出目录: {final_output_path}")
+                else:
+                    final_output_path = output_path
+            except Exception as e:
+                logger.warning(f"复制最终视频到输出目录失败，使用中间路径: {e}")
+                final_output_path = output_path
+
             return PostProcessResult(
-                output_path=output_path,
+                output_path=final_output_path,
                 subtitle_path=subtitle_path,
                 cover_path=cover_path,
                 status="success",
@@ -228,19 +250,18 @@ class PostProcessor:
                 error_message=str(e)
             )
 
-    def _get_video_metadata(self, video_path: str) -> Dict[str, Any]:
+    async def _get_video_metadata(self, video_path: str) -> Dict[str, Any]:
         """
         获取视频元数据（分辨率、帧率等）
-        
+
         Args:
             video_path: 视频文件路径
-            
+
         Returns:
             包含元数据的字典
         """
-        import subprocess
         import json
-        
+
         try:
             cmd = [
                 'ffprobe',
@@ -250,9 +271,9 @@ class PostProcessor:
                 '-show_streams',
                 video_path
             ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            data = json.loads(result.stdout)
+
+            returncode, stdout, stderr = await async_run_subprocess(cmd, check=True)
+            data = json.loads(stdout.decode())
             
             video_stream = None
             for stream in data.get('streams', []):
@@ -284,25 +305,23 @@ class PostProcessor:
             logger.error(f"获取视频元数据失败: {e}")
             return {}
     
-    def _normalize_video(self, video_path: str, target_width: int, target_height: int, target_fps: float, output_path: str) -> bool:
+    async def _normalize_video(self, video_path: str, target_width: int, target_height: int, target_fps: float, output_path: str) -> bool:
         """
         标准化视频（统一分辨率和帧率）
-        
+
         Args:
             video_path: 输入视频路径
             target_width: 目标宽度
             target_height: 目标高度
             target_fps: 目标帧率
             output_path: 输出路径
-            
+
         Returns:
             是否成功
         """
-        import subprocess
-        
         try:
             cmd = [
-                'ffmpeg', '-y',
+                'ffmpeg',
                 '-i', video_path,
                 '-vf', f'scale={target_width}:{target_height},fps={target_fps}',
                 '-c:v', 'libx264',
@@ -312,12 +331,12 @@ class PostProcessor:
                 '-b:a', '192k',
                 output_path
             ]
-            
+
             logger.info(f"标准化视频: {video_path} -> {output_path} ({target_width}x{target_height}@{target_fps}fps)")
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            
-            if result.returncode != 0:
-                logger.error(f"视频标准化失败: {result.stderr}")
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
+
+            if returncode != 0:
+                logger.error(f"视频标准化失败: {stderr.decode() if stderr else ''}")
                 return False
             
             logger.info(f"视频标准化成功: {output_path}")
@@ -327,74 +346,74 @@ class PostProcessor:
             logger.error(f"视频标准化异常: {e}")
             return False
     
-    def _concat_videos(self, video_paths: List[str], output_path: str) -> bool:
+    async def _concat_videos(self, video_paths: List[str], output_path: str) -> bool:
         """
         合并视频（包含分辨率和帧率对齐）
-        
+
         Args:
             video_paths: 视频路径列表
             output_path: 输出路径
-            
+
         Returns:
             是否成功
         """
         if not video_paths:
             logger.warning("没有视频文件需要合并")
             return False
-        
+
         try:
             import tempfile
-            
+
             temp_dir = tempfile.mkdtemp(prefix="video_normalize_")
-            
+
             try:
                 all_metadata = []
                 for path in video_paths:
                     if os.path.exists(path):
-                        meta = self._get_video_metadata(path)
+                        meta = await self._get_video_metadata(path)
                         if meta:
                             all_metadata.append(meta)
-                
+
                 if not all_metadata:
                     logger.error("无法获取任何视频的元数据")
                     return False
-                
+
                 target_width = max(m['width'] for m in all_metadata)
                 target_height = max(m['height'] for m in all_metadata)
                 target_fps = max(m.get('fps', 30.0) for m in all_metadata)
-                
+
                 logger.info(f"统一视频参数: 分辨率 {target_width}x{target_height}, 帧率 {target_fps}fps")
-                
+
                 normalized_paths = []
                 for i, video_path in enumerate(video_paths):
                     if not os.path.exists(video_path):
                         logger.warning(f"视频文件不存在，跳过: {video_path}")
                         continue
-                    
-                    meta = self._get_video_metadata(video_path)
-                    
+
+                    meta = await self._get_video_metadata(video_path)
+
                     if not meta or meta['width'] != target_width or meta['height'] != target_height or abs(meta.get('fps', 30.0) - target_fps) > 0.1:
                         normalized_path = os.path.join(temp_dir, f"normalized_{i:03d}.mp4")
-                        if self._normalize_video(video_path, target_width, target_height, target_fps, normalized_path):
+                        if await self._normalize_video(video_path, target_width, target_height, target_fps, normalized_path):
                             normalized_paths.append(normalized_path)
                         else:
                             logger.warning(f"视频标准化失败，使用原始视频: {video_path}")
                             normalized_paths.append(video_path)
                     else:
                         normalized_paths.append(video_path)
-                
-                list_file = os.path.join(self.output_dir, "concat_list.txt")
+
+                list_file = os.path.join(self.intermediate_dir, "concat_list.txt")
                 with open(list_file, 'w', encoding='utf-8') as f:
                     for path in normalized_paths:
                         f.write(f"file '{os.path.abspath(path)}'\n")
-                
+
                 cmd = [
-                    "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                    "ffmpeg", "-f", "concat", "-safe", "0",
                     "-i", list_file, "-c", "copy", output_path
                 ]
-                
+
                 logger.info(f"合并视频命令: {' '.join(cmd)}")
-                subprocess.run(cmd, check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+                await async_run_ffmpeg(cmd, check=True)
                 os.remove(list_file)
                 
                 logger.info(f"视频合并成功: {output_path}")
@@ -409,7 +428,7 @@ class PostProcessor:
             logger.error(f"视频合并失败: {e}")
             return False
 
-    def _concat_videos_with_transition(
+    async def _concat_videos_with_transition(
         self,
         video_paths: List[str],
         output_path: str,
@@ -444,7 +463,7 @@ class PostProcessor:
                 all_metadata = []
                 for path in video_paths:
                     if os.path.exists(path):
-                        meta = self._get_video_metadata(path)
+                        meta = await self._get_video_metadata(path)
                         if meta:
                             all_metadata.append(meta)
 
@@ -467,12 +486,12 @@ class PostProcessor:
                         logger.warning(f"视频文件不存在，跳过: {video_path}")
                         continue
 
-                    meta = self._get_video_metadata(video_path)
+                    meta = await self._get_video_metadata(video_path)
 
                     # 标准化视频
                     normalized_path = os.path.join(temp_dir, f"normalized_{i:03d}.mp4")
                     if not meta or meta['width'] != target_width or meta['height'] != target_height or abs(meta.get('fps', 30.0) - target_fps) > 0.1:
-                        if self._normalize_video(video_path, target_width, target_height, target_fps, normalized_path):
+                        if await self._normalize_video(video_path, target_width, target_height, target_fps, normalized_path):
                             normalized_paths.append(normalized_path)
                         else:
                             logger.warning(f"视频标准化失败，使用原始视频: {video_path}")
@@ -481,7 +500,7 @@ class PostProcessor:
                         normalized_paths.append(video_path)
 
                     # 获取视频时长
-                    duration = self._get_media_duration(normalized_paths[-1])
+                    duration = await self._get_media_duration(normalized_paths[-1])
                     video_durations.append(duration)
 
                 if len(normalized_paths) < 2:
@@ -538,7 +557,7 @@ class PostProcessor:
 
                 # 5. 执行 FFmpeg 命令
                 cmd = [
-                    "ffmpeg", "-y"
+                    "ffmpeg"
                 ]
 
                 # 添加输入文件
@@ -561,15 +580,10 @@ class PostProcessor:
                 ])
 
                 logger.info(f"转场合并命令: {' '.join(cmd)}")
-                result = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
-                )
+                returncode, stdout, stderr = await async_run_ffmpeg(cmd)
 
-                if result.returncode != 0:
-                    logger.error(f"转场合并失败: {result.stderr}")
+                if returncode != 0:
+                    logger.error(f"转场合并失败: {stderr.decode() if stderr else ''}")
                     return False
 
                 logger.info(f"转场合并成功: {output_path}")
@@ -790,7 +804,7 @@ class PostProcessor:
 
         return chunks if chunks else [text]
 
-    def _add_subtitle(
+    async def _add_subtitle(
         self,
         video_path: str,
         task: Task,
@@ -940,15 +954,26 @@ class PostProcessor:
 
             logger.info(f"字幕滤镜: {subtitle_filter}")
 
-            # 使用 shell=True 方式执行，更好处理 Windows 路径
-            cmd_str = f'ffmpeg -y -i "{video_path}" -vf "{subtitle_filter}" -c:v libx264 -crf 18 -c:a aac -b:a 192k "{output_path}"'
+            # 构建 ffmpeg 命令列表
+            cmd = [
+                "ffmpeg",
+                "-i", video_path,
+                "-vf", subtitle_filter,
+                "-c:v", "libx264",
+                "-crf", "18",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                output_path
+            ]
 
-            logger.info(f"添加字幕命令: {cmd_str}")
+            logger.info(f"添加字幕命令: {' '.join(cmd)}")
             try:
-                result = subprocess.run(cmd_str, check=True, capture_output=True, text=True, shell=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            except subprocess.CalledProcessError as e:
-                logger.error(f"ffmpeg 错误输出: {e.stderr}")
-                logger.error(f"ffmpeg 标准输出: {e.stdout}")
+                returncode, stdout, stderr = await async_run_ffmpeg(cmd, check=True)
+            except Exception as e:
+                stderr_text = stderr.decode() if stderr else ''
+                stdout_text = stdout.decode() if stdout else ''
+                logger.error(f"ffmpeg 错误输出: {stderr_text}")
+                logger.error(f"ffmpeg 标准输出: {stdout_text}")
                 raise
 
             os.replace(output_path, video_path)
@@ -1027,7 +1052,7 @@ class PostProcessor:
         ms = int((seconds % 1) * 1000)
         return f"{hours:02d}:{minutes:02d}:{secs:02d},{ms:03d}"
 
-    def _add_bgm(
+    async def _add_bgm(
         self,
         video_path: str,
         bgm_path: str,
@@ -1058,8 +1083,8 @@ class PostProcessor:
 
             output_path = video_path.replace(".mp4", "_bgm.mp4")
 
-            video_duration = self._get_media_duration(video_path)
-            bgm_duration = self._get_media_duration(bgm_path)
+            video_duration = await self._get_media_duration(video_path)
+            bgm_duration = await self._get_media_duration(bgm_path)
 
             logger.info(f"视频时长: {video_duration}s, BGM时长: {bgm_duration}s")
 
@@ -1080,7 +1105,7 @@ class PostProcessor:
                 logger.info(f"BGM 需要循环 {loop_count} 次以覆盖视频时长")
 
                 cmd = [
-                    "ffmpeg", "-y",
+                    "ffmpeg",
                     "-i", video_path,
                     "-stream_loop", str(loop_count),
                     "-i", bgm_path,
@@ -1098,7 +1123,7 @@ class PostProcessor:
                 logger.info(f"BGM 时长足够，截取前 {video_duration}s")
 
                 cmd = [
-                    "ffmpeg", "-y",
+                    "ffmpeg",
                     "-i", video_path,
                     "-i", bgm_path,
                     "-filter_complex",
@@ -1111,10 +1136,10 @@ class PostProcessor:
                 ]
 
             logger.info(f"BGM 添加命令: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
 
-            if result.returncode != 0:
-                logger.error(f"BGM 添加失败: {result.stderr}")
+            if returncode != 0:
+                logger.error(f"BGM 添加失败: {stderr.decode() if stderr else ''}")
                 return video_path
 
             # 验证输出文件
@@ -1122,7 +1147,7 @@ class PostProcessor:
                 logger.error(f"BGM 添加后输出文件不存在: {output_path}")
                 return video_path
 
-            output_duration = self._get_media_duration(output_path)
+            output_duration = await self._get_media_duration(output_path)
             logger.info(f"BGM 添加成功，输出时长: {output_duration}s (原视频: {video_duration}s)")
 
             # 验证时长是否正确（允许 0.5 秒误差）
@@ -1139,7 +1164,7 @@ class PostProcessor:
             logger.error(f"详细错误: {traceback.format_exc()}")
             return video_path
 
-    def _get_media_duration(self, media_path: str) -> float:
+    async def _get_media_duration(self, media_path: str) -> float:
         """获取媒体文件时长"""
         try:
             cmd = [
@@ -1148,35 +1173,35 @@ class PostProcessor:
                 '-of', 'default=noprint_wrappers=1:nokey=1',
                 media_path
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            return float(result.stdout.strip())
+            returncode, stdout, stderr = await async_run_subprocess(cmd, check=True)
+            return float(stdout.decode().strip())
         except Exception as e:
             logger.error(f"获取媒体时长失败: {e}")
             return 0.0
 
-    def _generate_cover(self, video_path: str, task: Task, config=None) -> Optional[str]:
+    async def _generate_cover(self, video_path: str, task: Task, config=None) -> Optional[str]:
         """生成视频封面（从开场视频截取帧，调用 qwen-image API）"""
         try:
             opening_video = getattr(task, 'opening_video', None)
             opening_video_with_tags = getattr(task, 'opening_video_with_tags', None)
-            
+
             if opening_video_with_tags and hasattr(opening_video_with_tags, 'file_path'):
                 opening_video = opening_video_with_tags.file_path
-            
+
             if not opening_video or not os.path.exists(opening_video):
                 logger.warning(f"开场视频不存在，跳过封面生成: {opening_video}")
                 return None
 
             reference_path = video_path.replace(".mp4", "_reference.jpg")
             cmd = [
-                "ffmpeg", "-y",
+                "ffmpeg",
                 "-i", opening_video,
                 "-ss", "00:00:01",
                 "-vframes", "1",
                 "-q:v", "2",
                 reference_path
             ]
-            subprocess.run(cmd, check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            await async_run_ffmpeg(cmd, check=True)
 
             if not os.path.exists(reference_path):
                 logger.error("从开场视频截取帧失败")
@@ -1189,7 +1214,7 @@ class PostProcessor:
             logger.info(f"封面提示词: {cover_prompt}")
 
             if self.qwen_client:
-                output_dir = os.path.join(self.output_dir, "covers")
+                output_dir = os.path.join(self.intermediate_dir, "covers")
                 cover_path = self.qwen_client.generate_image_from_reference(
                     prompt=cover_prompt,
                     reference_image_path=reference_path,
@@ -1245,7 +1270,7 @@ class PostProcessor:
         prompt = template.replace("{summary}", cover_summary)
         return prompt
 
-    def _insert_cover_frames(self, video_path: str, cover_path: str, frame_count: int = 5) -> str:
+    async def _insert_cover_frames(self, video_path: str, cover_path: str, frame_count: int = 5) -> str:
         """在视频开头插入封面帧"""
         try:
             logger.info(f"开始插入封面帧: {cover_path} 到视频 {video_path}")
@@ -1259,7 +1284,7 @@ class PostProcessor:
             cover_duration = frame_count / 30.0
 
             cmd = [
-                "ffmpeg", "-y",
+                "ffmpeg",
                 "-loop", "1",
                 "-i", cover_path,
                 "-i", video_path,
@@ -1273,7 +1298,7 @@ class PostProcessor:
             ]
 
             logger.info(f"封面帧插入命令: {' '.join(cmd)}")
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            await async_run_ffmpeg(cmd, check=True)
             logger.info(f"封面帧插入成功")
 
             os.replace(output_path, video_path)
@@ -1284,18 +1309,18 @@ class PostProcessor:
             logger.error(f"插入封面帧失败: {e}")
             return video_path
     
-    def _generate_cover_with_qwen(
+    async def _generate_cover_with_qwen(
         self,
         video_path: str,
         task: Task
     ) -> Optional[str]:
         """
         使用 Qwen-Image 生成智能封面
-        
+
         Args:
             video_path: 视频路径
             task: 任务对象
-            
+
         Returns:
             封面图片路径
         """
@@ -1303,14 +1328,14 @@ class PostProcessor:
             # 1. 提取关键帧作为参考图
             reference_path = video_path.replace(".mp4", "_reference.jpg")
             cmd = [
-                "ffmpeg", "-y",
+                "ffmpeg",
                 "-i", video_path,
                 "-ss", "00:00:02",
                 "-vframes", "1",
                 "-q:v", "2",
                 reference_path
             ]
-            subprocess.run(cmd, check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            await async_run_ffmpeg(cmd, check=True)
             
             if not os.path.exists(reference_path):
                 return None
@@ -1319,7 +1344,7 @@ class PostProcessor:
             cover_prompt = self._generate_cover_prompt(task)
             
             # 3. 调用 Qwen-Image API
-            output_dir = os.path.join(self.output_dir, "covers")
+            output_dir = os.path.join(self.intermediate_dir, "covers")
             cover_path = self.qwen_client.generate_image_from_reference(
                 prompt=cover_prompt,
                 reference_image_path=reference_path,
@@ -1337,22 +1362,22 @@ class PostProcessor:
             logger.error(f"Qwen-Image 封面生成失败：{e}")
             return None
     
-    def _generate_cover_simple(self, video_path: str) -> Optional[str]:
+    async def _generate_cover_simple(self, video_path: str) -> Optional[str]:
         """简单封面生成（提取中间帧）"""
         try:
             cover_path = video_path.replace(".mp4", "_cover.jpg")
-            
+
             cmd = [
-                "ffmpeg", "-y",
+                "ffmpeg",
                 "-i", video_path,
                 "-ss", "00:00:02",
                 "-vframes", "1",
                 "-q:v", "2",
                 cover_path
             ]
-            
-            subprocess.run(cmd, check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
-            
+
+            await async_run_ffmpeg(cmd, check=True)
+
             return cover_path if os.path.exists(cover_path) else None
             
         except Exception as e:
@@ -1574,16 +1599,19 @@ class PostProcessor:
 
 
 def create_post_processor(
+    intermediate_dir: str = "backend/output",
     output_dir: str = "output",
     qwen_api_key: Optional[str] = None
 ) -> PostProcessor:
     """创建后期处理器的便捷函数
-    
+
     Args:
-        output_dir: 输出目录
+        intermediate_dir: 中间处理目录（字幕、BGM、合并等中间文件存放处）
+        output_dir: 最终输出目录（只有完成全部后期处理的视频才存放此处）
         qwen_api_key: Qwen-Image API 密钥
     """
     return PostProcessor(
+        intermediate_dir=intermediate_dir,
         output_dir=output_dir,
         qwen_api_key=qwen_api_key
     )

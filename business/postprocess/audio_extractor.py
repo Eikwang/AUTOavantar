@@ -4,10 +4,10 @@
 使用 ffmpeg 从视频中提取音频轨道为 WAV 格式（16kHz 采样率，16bit 深度，单声道）
 """
 
-import subprocess
 import os
-import platform
 from pathlib import Path
+
+from api.utils.async_subprocess import async_run_subprocess, async_run_ffmpeg, async_run_ffprobe
 
 
 class AudioExtractionError(Exception):
@@ -15,7 +15,7 @@ class AudioExtractionError(Exception):
     pass
 
 
-def extract_audio_from_video(video_path: str, output_path: str = None, sample_rate: int = 16000) -> str:
+async def extract_audio_from_video(video_path: str, output_path: str = None, sample_rate: int = 16000) -> str:
     """
     从视频中提取音频
 
@@ -57,29 +57,13 @@ def extract_audio_from_video(video_path: str, output_path: str = None, sample_ra
         '-acodec', 'pcm_s16le',
         '-ar', str(sample_rate),
         '-ac', '1',
-        '-y',  # 覆盖已存在的文件
         output_path
     ]
 
     try:
         # 执行 ffmpeg 命令
-        # 在 Windows 上添加 CREATE_NO_WINDOW 标志，防止弹出控制台窗口
-        creationflags = subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=True,
-            encoding='utf-8',
-            errors='replace',
-            creationflags=creationflags
-        )
+        returncode, stdout, stderr = await async_run_ffmpeg(cmd, check=True)
         return output_path
-    except subprocess.CalledProcessError as e:
-        raise AudioExtractionError(
-            f"音频提取失败：{e.stderr if e.stderr else str(e)}"
-        )
-    except FileNotFoundError:
-        raise AudioExtractionError(
-            "ffmpeg 未安装或不在 PATH 中，请安装 ffmpeg 并确保其可执行"
-        )
+    except Exception as e:
+        _err_msg = str(e)
+        raise AudioExtractionError(f"音频提取失败：{_err_msg}")

@@ -5,10 +5,10 @@
 
 import logging
 import os
-import platform
-import subprocess
 from pathlib import Path
 from typing import Optional
+
+from api.utils.async_subprocess import async_run_subprocess, async_run_ffmpeg, async_run_ffprobe
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class AudioSpeedProcessor:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"音频语速处理器初始化: {self.output_dir}")
 
-    def adjust_speed(
+    async def adjust_speed(
         self,
         audio_path: str,
         speed: float,
@@ -99,7 +99,6 @@ class AudioSpeedProcessor:
             # tempo 参数：>1 加快，<1 减慢
             cmd = [
                 "ffmpeg",
-                "-y",
                 "-i", audio_path,
                 "-af", f"rubberband=tempo={speed}",
                 "-c:a", "libmp3lame",
@@ -107,13 +106,14 @@ class AudioSpeedProcessor:
                 output_path
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
 
-            if result.returncode == 0 and os.path.exists(output_path):
+            if returncode == 0 and os.path.exists(output_path):
                 logger.info(f"音频语速调节成功: {output_path}")
                 return output_path
             else:
-                logger.error(f"音频语速调节失败: {result.stderr}")
+                _err = stderr.decode() if stderr else ""
+                logger.error(f"音频语速调节失败: {_err}")
                 return None
 
         except FileNotFoundError:
@@ -123,7 +123,7 @@ class AudioSpeedProcessor:
             logger.error(f"音频语速调节异常: {e}")
             return None
 
-    def adjust_speed_simple(
+    async def adjust_speed_simple(
         self,
         audio_path: str,
         speed: float,
@@ -184,7 +184,6 @@ class AudioSpeedProcessor:
             # 对于 0.8-1.2 的范围，可以直接使用
             cmd = [
                 "ffmpeg",
-                "-y",
                 "-i", audio_path,
                 "-af", f"atempo={speed}",
                 "-c:a", "libmp3lame",
@@ -192,13 +191,14 @@ class AudioSpeedProcessor:
                 output_path
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
 
-            if result.returncode == 0 and os.path.exists(output_path):
+            if returncode == 0 and os.path.exists(output_path):
                 logger.info(f"音频语速调节成功 (atempo): {output_path}")
                 return output_path
             else:
-                logger.error(f"音频语速调节失败 (atempo): {result.stderr}")
+                _err = stderr.decode() if stderr else ""
+                logger.error(f"音频语速调节失败 (atempo): {_err}")
                 return None
 
         except FileNotFoundError:

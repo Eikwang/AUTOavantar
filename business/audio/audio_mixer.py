@@ -5,11 +5,11 @@
 
 import logging
 import os
-import platform
-import subprocess
 import numpy as np
 from typing import Optional, Tuple
 from pathlib import Path
+
+from api.utils.async_subprocess import async_run_subprocess, async_run_ffmpeg, async_run_ffprobe
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ class AudioMixer:
         self.temp_dir = temp_dir
         os.makedirs(temp_dir, exist_ok=True)
     
-    def mix_with_ducking(
+    async def mix_with_ducking(
         self,
         video_path: str,
         bgm_path: str,
@@ -63,7 +63,7 @@ class AudioMixer:
             )
             
             cmd = [
-                "ffmpeg", "-y",
+                "ffmpeg",
                 "-i", video_path,
                 "-i", bgm_path,
                 "-filter_complex", filter_complex,
@@ -75,7 +75,7 @@ class AudioMixer:
                 output_path
             ]
             
-            subprocess.run(cmd, check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            await async_run_ffmpeg(cmd, check=True)
             
             # 替换原视频
             os.replace(output_path, video_path)
@@ -87,7 +87,7 @@ class AudioMixer:
             logger.error(f"混音失败：{e}")
             return video_path
     
-    def simple_mix(
+    async def simple_mix(
         self,
         video_path: str,
         bgm_path: str,
@@ -112,7 +112,7 @@ class AudioMixer:
         
         try:
             cmd = [
-                "ffmpeg", "-y",
+                "ffmpeg",
                 "-i", video_path,
                 "-i", bgm_path,
                 "-filter_complex",
@@ -125,7 +125,7 @@ class AudioMixer:
                 output_path
             ]
             
-            subprocess.run(cmd, check=True, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0)
+            await async_run_ffmpeg(cmd, check=True)
             
             # 替换原视频
             os.replace(output_path, video_path)
@@ -167,7 +167,7 @@ class AudioMixer:
             logger.warning("librosa 未安装，使用简单检测")
             return np.array([])
     
-    def apply_manual_ducking(
+    async def apply_manual_ducking(
         self,
         video_path: str,
         bgm_path: str,
@@ -191,7 +191,7 @@ class AudioMixer:
             输出视频路径
         """
         logger.warning("手动 Ducking 实现复杂，建议使用 FFmpeg 自动 Ducking")
-        return self.mix_with_ducking(video_path, bgm_path, output_path)
+        return await self.mix_with_ducking(video_path, bgm_path, output_path)
 
 
 def create_audio_mixer(temp_dir: str = "temp/audio") -> AudioMixer:

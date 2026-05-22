@@ -721,10 +721,9 @@ class WorkflowService:
                 transition_duration=config.get("transition_duration", 0.5),
             )
 
-            # 使用 asyncio.to_thread 在线程池中运行同步的 workflow.run()
-            # 避免阻塞事件循环
-            result = await asyncio.to_thread(
-                workflow.run,
+            # 直接 await workflow.run_async()，不再使用 asyncio.to_thread
+            # 这样 FFmpeg 调用通过 asyncio.create_subprocess_exec 非阻塞执行
+            result = await workflow.run_async(
                 source_video_path=config.get("source_video_path", getattr(task, 'source_video_path', '')),
                 script_text=config.get("script_text", getattr(task, 'script_text', '')),
                 topic=config.get("topic", getattr(task, 'topic', '')),
