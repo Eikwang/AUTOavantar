@@ -850,7 +850,7 @@ class PostProcessor:
 
             if use_precise:
                 logger.info("使用精准字幕生成模式")
-                current_srt_path = self._generate_precise_subtitle(
+                current_srt_path = await self._generate_precise_subtitle(
                     video_path=video_path,
                     segments_text=segments_text,
                     output_srt_path=srt_path
@@ -1437,7 +1437,7 @@ class PostProcessor:
             logger.error(f"检查精准字幕配置失败：{e}")
             return False
 
-    def _generate_precise_subtitle(
+    async def _generate_precise_subtitle(
         self,
         video_path: str,
         segments_text: List[str],
@@ -1462,7 +1462,7 @@ class PostProcessor:
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             model_path = os.path.join(project_root, "models", "Qwen3-ForcedAligner-0.6B")
 
-            srt_path = generate_precise_subtitle(
+            srt_path = await generate_precise_subtitle(
                 video_path=video_path,
                 segments_text=segments_text,
                 output_srt_path=output_srt_path,

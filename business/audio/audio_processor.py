@@ -712,7 +712,102 @@ class AudioProcessor:
 
                 time.sleep(0.5)  # 避免并发过高
 
+            # 单人模式：启用转场效果时，为每个段落的音频首尾添加静音缓冲
+            # 避免转场期间的 acrossfade 滤镜"吞掉"音频内容
+            if results and config and getattr(config, 'enable_transition', False):
+                try:
+                    transition_duration = getattr(config, 'transition_duration', 0.5)
+                    transition_buffer = transition_duration / 2
+                    logger.info(f"单人模式启用转场效果，为每个段落音频首尾添加 {transition_buffer:.2f}秒 静音缓冲")
+                    await self._add_transition_silence_to_results(results, task, transition_buffer)
+                except Exception as e:
+                    logger.error(f"单人模式添加转场静音缓冲失败: {e}")
+
         return results
+
+    async def _add_transition_silence_to_results(
+        self,
+        results: List[AudioSegmentResult],
+        task: Task,
+        transition_buffer: float
+    ):
+        """
+        单人模式下，为每个成功合成的音频段落首尾添加转场缓冲静音
+
+        转场效果合并视频时使用 acrossfade 滤镜，会在转场期间交叉淡入淡出音频，
+        导致音频内容被"吞掉"。添加静音缓冲后：
+        - 首部静音：让转场效果淡入的是静音区域，不影响实际语音内容
+        - 尾部静音：让转场效果淡出的是静音区域，不影响实际语音内容
+        同时更新 segment 的 audio_path 和 duration，确保后续流程使用带静音的音频
+
+        Args:
+            results: 音频结果列表
+            task: 任务对象
+            transition_buffer: 转场缓冲时长（秒），首尾各添加此时长静音
+        """
+        buffer_ms = int(transition_buffer * 1000)
+
+        for result in results:
+            if result.status != "success" or not result.audio_path:
+                continue
+
+            audio_path = result.audio_path
+            if not os.path.exists(audio_path):
+                logger.warning(f"音频文件不存在，跳过静音缓冲添加: {audio_path}")
+                continue
+
+            # 如果音频已经添加过静音缓冲，跳过（从检查点恢复的情况）
+            if audio_path.endswith("_with_buffer.wav"):
+                logger.info(f"段落 {result.segment_id} 音频已包含静音缓冲，跳过: {audio_path}")
+                continue
+
+            # 生成带静音缓冲的音频文件名
+            original_duration = result.duration
+            output_filename = os.path.basename(audio_path).replace(".wav", "_with_buffer.wav")
+            output_path = os.path.join(self.output_dir, output_filename)
+
+            # 使用 ffmpeg 的 adelay + apad 在首尾添加静音
+            # 首部：adelay 添加延迟（前置静音）
+            # 尾部：apad 设置总时长（原始 + 前置 + 后置静音）
+            total_duration = transition_buffer + original_duration + transition_buffer
+            filter_complex = f"[0:a]adelay={buffer_ms}|{buffer_ms},apad=whole_dur={total_duration}[a]"
+
+            cmd = [
+                "ffmpeg",
+                "-i", audio_path,
+                "-filter_complex", filter_complex,
+                "-map", "[a]",
+                "-c:a", "pcm_s16le",
+                "-ar", "16000",
+                "-ac", "1",
+                output_path
+            ]
+
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd)
+
+            if returncode != 0:
+                _err = stderr.decode() if stderr else ""
+                logger.error(f"段落 {result.segment_id} 添加转场静音缓冲失败: {_err}")
+                continue
+
+            if not os.path.exists(output_path):
+                logger.error(f"段落 {result.segment_id} 添加转场静音缓冲后文件不存在")
+                continue
+
+            # 更新音频时长
+            new_duration = self._get_audio_duration(output_path)
+            logger.info(f"段落 {result.segment_id} 转场缓冲添加完成: 原始 {original_duration:.2f}s -> 带缓冲 {new_duration:.2f}s (首尾各 {transition_buffer:.2f}s)")
+
+            # 更新 result
+            result.audio_path = output_path
+            result.duration = new_duration
+
+            # 更新对应的 segment
+            for segment in task.segments:
+                if segment.segment_id == result.segment_id:
+                    segment.audio_path = output_path
+                    segment.duration = new_duration
+                    break
 
     async def _merge_speaker_audios(self, task: Task, results: List[AudioSegmentResult], config: TaskConfig = None):
         """

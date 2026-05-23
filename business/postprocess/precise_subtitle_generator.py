@@ -83,7 +83,7 @@ class PreciseSubtitleGenerator:
             logger.error(f"模型加载失败：{e}")
             raise ModelLoadError(f"Qwen3-ForcedAligner 模型加载失败：{str(e)}")
 
-    def generate(
+    async def generate(
         self,
         video_path: str,
         segments_text: List[str],
@@ -114,7 +114,7 @@ class PreciseSubtitleGenerator:
         # 1. 从视频提取音频
         logger.info(f"从视频提取音频：{video_path}")
         try:
-            audio_path = extract_audio_from_video(video_path, sample_rate=16000)
+            audio_path = await extract_audio_from_video(video_path, sample_rate=16000)
             logger.info(f"音频提取完成：{audio_path}")
         except AudioExtractionError as e:
             logger.error(f"音频提取失败：{e}")
@@ -217,7 +217,7 @@ class PreciseSubtitleGenerator:
 
 
 # 便捷函数
-def generate_precise_subtitle(
+async def generate_precise_subtitle(
     video_path: str,
     segments_text: List[str],
     output_srt_path: str,
@@ -243,6 +243,6 @@ def generate_precise_subtitle(
 
     try:
         generator.load_model()
-        return generator.generate(video_path, segments_text, output_srt_path, max_chars)
+        return await generator.generate(video_path, segments_text, output_srt_path, max_chars)
     finally:
         generator.unload()
