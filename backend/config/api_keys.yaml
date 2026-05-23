@@ -1,5 +1,0 @@
-# API Keys 配置
-# 从 config/api_keys.yaml 迁移，使用标准字段名格式
-
-deepseek_api_key: "sk-4e696afa987c4fca9b98e2368e582c3d"
-aliyun_api_key: "sk-fb072a2af0f648cdb0fb2b1eda5e2ffc"

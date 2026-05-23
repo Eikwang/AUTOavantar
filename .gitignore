@@ -94,6 +94,10 @@ voicel/outputs/
 # 私钥文件（不要提交到版本控制）
 config/license/private_key.pem
 
+# API 密钥文件（不要提交到版本控制）
+backend/secrets/
+backend/config/api_keys.yaml
+
 # 打包输出目录（安装包不提交）
 release/
 1.打包exe*.bat

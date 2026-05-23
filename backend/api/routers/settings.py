@@ -20,6 +20,7 @@ router = APIRouter()  # 移除 prefix，在 main.py 中统一配置
 
 # 使用绝对路径确保配置目录正确（backend/config 相对于项目根目录）
 CONFIG_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "config"))
+SECRETS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "secrets"))
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -154,11 +155,12 @@ class SaveResponse(BaseModel):
 def _ensure_config_dir():
     """确保配置目录存在"""
     os.makedirs(CONFIG_DIR, exist_ok=True)
+    os.makedirs(SECRETS_DIR, exist_ok=True)
 
 
 def _get_api_keys_path() -> str:
     """获取 API Key 配置路径"""
-    return os.path.join(CONFIG_DIR, "api_keys.yaml")
+    return os.path.join(SECRETS_DIR, "api_keys.yaml")
 
 
 def _get_prompt_templates_path() -> str:

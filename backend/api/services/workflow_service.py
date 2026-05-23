@@ -31,6 +31,7 @@ logger = logging.getLogger("workflow_service")
 # __file__ 位于 backend/api/services/workflow_service.py
 # parent = services/, parent.parent = api/, parent.parent.parent = backend/
 CONFIG_DIR = Path(__file__).parent.parent.parent / "config"
+SECRETS_DIR = Path(__file__).parent.parent.parent / "secrets"
 
 
 def load_api_keys_config() -> Dict[str, Any]:
@@ -40,7 +41,7 @@ def load_api_keys_config() -> Dict[str, Any]:
     Returns:
         包含 API 密钥配置的字典
     """
-    config_path = CONFIG_DIR / "api_keys.yaml"
+    config_path = SECRETS_DIR / "api_keys.yaml"
     default_config = {
         "deepseek_api_key": "",
         "aliyun_api_key": ""
