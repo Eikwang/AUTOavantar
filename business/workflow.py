@@ -174,9 +174,9 @@ class DigitalHumanWorkflow:
         # 初始化各模块（使用绝对路径）
         self.video_preprocessor = VideoPreprocessor()
         self.llm_generator = LLMScriptGenerator(
-            provider=self.llm_config.get("provider", "deepseek"),
+            provider=self.llm_config.get("provider", "astron"),
             api_key=self.llm_config.get("api_key", ""),
-            model=self.llm_config.get("model", "deepseek-v4-pro")
+            model=self.llm_config.get("model", "astron-code-latest")
         )
         self.script_parser = create_script_parser()
         self.audio_processor = create_audio_processor(
@@ -1692,7 +1692,7 @@ class DigitalHumanWorkflow:
 def create_workflow(
     tts_engine=None,
     heygem_engine=None,
-    llm_provider: str = "deepseek",
+    llm_provider: str = "astron",
     llm_api_key: str = "",
     output_dir: str = "output",
     qwen_api_key: Optional[str] = None,
@@ -1741,7 +1741,7 @@ def main():
     """简单示例"""
     # 创建工作流（引擎模式）
     workflow = create_workflow(
-        llm_provider="deepseek",
+        llm_provider="astron",
         llm_api_key="your-api-key"
     )
 

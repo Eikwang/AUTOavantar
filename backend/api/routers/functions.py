@@ -201,9 +201,9 @@ def get_script_generator() -> LLMScriptGenerator:
     api_config = load_api_keys_config()
     deepseek_api_key = api_config.get('deepseek_api_key', '')
     return create_script_generator(
-        provider="deepseek",
+        provider="astron",
         api_key=deepseek_api_key,
-        model="deepseek-v4-pro"
+        model="astron-code-latest"
     )
 
 

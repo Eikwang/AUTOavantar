@@ -12,8 +12,8 @@ from openai import OpenAI
 
 logger = logging.getLogger("autoavantar.llm")
 
-# DeepSeek API base URL
-DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+# LLM API base URL
+LLM_BASE_URL = "https://maas-coding-api.cn-huabei-1.xf-yun.com/v2"
 
 
 class LLMScriptGenerator:
@@ -32,7 +32,7 @@ class LLMScriptGenerator:
         if self._client is None:
             self._client = OpenAI(
                 api_key=self.api_key,
-                base_url=DEEPSEEK_BASE_URL,
+                base_url=LLM_BASE_URL,
                 timeout=180.0,
                 max_retries=2
             )

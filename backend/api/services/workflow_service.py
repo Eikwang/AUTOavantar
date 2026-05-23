@@ -187,7 +187,7 @@ class WorkflowService:
         self,
         tts_engine=None,
         heygem_engine=None,
-        llm_provider: str = "deepseek",
+        llm_provider: str = "astron",
         llm_api_key: str = "",
         aliyun_api_key: str = "",
         output_dir: str = "output",
@@ -2343,7 +2343,7 @@ def get_workflow_service() -> Optional[WorkflowService]:
 async def init_workflow_service(
     tts_engine=None,
     heygem_engine=None,
-    llm_provider: str = "deepseek",
+    llm_provider: str = "astron",
     llm_api_key: Optional[str] = None,
     output_dir: str = "output",
     max_concurrent_tasks: int = 3,
