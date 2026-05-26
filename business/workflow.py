@@ -769,10 +769,19 @@ class DigitalHumanWorkflow:
                 progress_callback(85, "后期处理中...")
 
             # 后期处理子阶段进度更新
-            if progress_callback:
-                progress_callback(87, build_stage_description("postprocess", 0, 0, None, "subtitle"))
+            def post_progress_callback(progress: float, stage: str):
+                """后期处理进度回调"""
+                if progress_callback:
+                    # 将 85-100% 的进度映射到后期处理的子阶段
+                    # 封面生成：87-92%，插入封面：92-97%，完成：97-100%
+                    if "封面" in stage:
+                        progress_callback(87 + (progress * 0.05), stage)
+                    elif "合成" in stage:
+                        progress_callback(92 + (progress * 0.05), stage)
+                    else:
+                        progress_callback(85 + (progress * 0.15), stage)
 
-            post_result = await self.post_processor.process(task, config)
+            post_result = await self.post_processor.process(task, config, progress_callback=post_progress_callback)
 
             if post_result.status == "success":
                 task.output_video_path = post_result.output_path

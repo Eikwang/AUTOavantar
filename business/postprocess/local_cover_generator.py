@@ -9,6 +9,7 @@ import math
 import time
 import logging
 from typing import Optional, Tuple
+from pathlib import Path
 
 import torch
 from diffusers import FlowMatchEulerDiscreteScheduler, QwenImageEditPlusPipeline
@@ -22,12 +23,17 @@ logger = logging.getLogger(__name__)
 class LocalCoverGenerator:
     """本地 AI 封面生成器"""
 
-    # 模型路径配置
+    # 模型路径配置 - 使用项目根目录的绝对路径
+    # 项目根目录：D:\AI\AUTOavantar
+    # 模型目录：D:\AI\AUTOavantar\models\standalone_models
+    _project_root = Path(__file__).parent.parent.parent  # business/postprocess -> 项目根目录
+    _models_dir = _project_root / "models" / "standalone_models"
+
     MODEL_PATHS = {
-        "fp4": r".\standalone_models\svdq-fp4_r32-qwen-image-edit-2509-lightning-4steps-251115.safetensors",
-        "int4": r".\standalone_models\svdq-int4_r32-qwen-image-edit-2509-lightning-4steps-251115.safetensors",
+        "fp4": _models_dir / "svdq-fp4_r32-qwen-image-edit-2509-lightning-4steps-251115.safetensors",
+        "int4": _models_dir / "svdq-int4_r32-qwen-image-edit-2509-lightning-4steps-251115.safetensors",
     }
-    STANDALONE_MODEL_PATH = r".\standalone_models\Qwen-Image-Edit-2509"
+    STANDALONE_MODEL_PATH = _models_dir / "Qwen-Image-Edit-2509"
 
     # 推理参数
     NUM_INFERENCE_STEPS = 4

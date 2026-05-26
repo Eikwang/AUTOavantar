@@ -326,7 +326,7 @@ if os.path.exists("uploads"):
         )
 
 # 注册路由 - 调整顺序，将具体路由放在通配符路由之前
-from api.routers import tasks, materials, upload, health, websocket, settings, functions, tags, system, license, smart_cut
+from api.routers import tasks, materials, upload, health, websocket, settings, functions, tags, system, license, smart_cut, media_clip
 
 # 1. 健康检查（最具体的路由）
 app.include_router(health.router, prefix="/api", tags=["健康检查"])
@@ -354,6 +354,9 @@ app.include_router(tags.router, prefix="/api/tags", tags=["标签管理"])
 
 # 8. 智能裁剪（具体路由）
 app.include_router(smart_cut.router, prefix="/api/smart-cut", tags=["智能裁剪"])
+
+# 8.5 音视频剪辑（具体路由）
+app.include_router(media_clip.router, prefix="/api/media-clip", tags=["音视频剪辑"])
 
 # 8. 任务管理（包含通配符路由，放在最后）
 app.include_router(tasks.router, prefix="/api/tasks", tags=["任务管理"])

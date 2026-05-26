@@ -53,6 +53,12 @@
                     </div>
                   </div>
                   <div class="video-actions">
+                    <MediaClipper
+                      :file-path="taskForm.openingVideo.path"
+                      media-type="video"
+                      :is-dark-theme="isDarkTheme"
+                      @clipped="handleVideoClipped"
+                    />
                     <el-button type="primary" link @click="analyzeFace('opening')" :loading="faceAnalysisLoading[taskForm.openingVideo?.path] && faceAnalysisLoading[taskForm.openingVideo?.path] !== 'completed'" :disabled="(faceAnalysisLoading[taskForm.openingVideo?.path] && faceAnalysisLoading[taskForm.openingVideo?.path] !== 'completed') || analyzedVideoPaths[taskForm.openingVideo?.path]">
                       <el-icon><Search /></el-icon> {{ faceAnalysisLoading[taskForm.openingVideo?.path] === 'completed' ? '已完成' : (faceAnalysisLoading[taskForm.openingVideo?.path] || analyzedVideoPaths[taskForm.openingVideo?.path] ? '分析中...' : '面部分析') }}
                     </el-button>
@@ -81,10 +87,16 @@
                     <el-icon><VideoCamera /></el-icon>
                     <span class="video-name" :title="video.name">{{ video.name }}</span>
                     <div class="video-preview">
-                      <video :src="'/api/files/' + video.path + (video.timestamp ? '?t=' + video.timestamp : '')" controls width="320" height="180" class="preview-video"></video>
+                      <video :src="'/api/files/' + video.path + (video.timestamp ? '?t=' + video.timestamp : '')" controls width="640" height="360" class="preview-video"></video>
                     </div>
                   </div>
                   <div class="video-actions">
+                    <MediaClipper
+                      :file-path="video.path"
+                      media-type="video"
+                      :is-dark-theme="isDarkTheme"
+                      @clipped="handleVideoClipped"
+                    />
                     <el-select v-model="video.emotion" placeholder="选择情绪" size="small" class="emotion-select">
                       <el-option label="开心" value="happy" />
                       <el-option label="生气" value="angry" />
@@ -123,6 +135,12 @@
                     </div>
                   </div>
                   <div class="video-actions">
+                    <MediaClipper
+                      :file-path="taskForm.endingVideo.path"
+                      media-type="video"
+                      :is-dark-theme="isDarkTheme"
+                      @clipped="handleVideoClipped"
+                    />
                     <el-button type="primary" link @click="analyzeFace('ending')" :loading="faceAnalysisLoading[taskForm.endingVideo?.path] && faceAnalysisLoading[taskForm.endingVideo?.path] !== 'completed'" :disabled="(faceAnalysisLoading[taskForm.endingVideo?.path] && faceAnalysisLoading[taskForm.endingVideo?.path] !== 'completed') || analyzedVideoPaths[taskForm.endingVideo?.path]">
                       <el-icon><Search /></el-icon> {{ faceAnalysisLoading[taskForm.endingVideo?.path] === 'completed' ? '已完成' : (faceAnalysisLoading[taskForm.endingVideo?.path] || analyzedVideoPaths[taskForm.endingVideo?.path] ? '分析中...' : '面部分析') }}
                     </el-button>
@@ -167,10 +185,16 @@
                     <el-icon><VideoCamera /></el-icon>
                     <span class="video-name" :title="video.name">{{ video.name }}</span>
                     <div class="video-preview">
-                      <video :src="'/api/files/' + video.path + (video.timestamp ? '?t=' + video.timestamp : '')" controls width="320" height="180" class="preview-video"></video>
+                      <video :src="'/api/files/' + video.path + (video.timestamp ? '?t=' + video.timestamp : '')" controls width="640" height="360" class="preview-video"></video>
                     </div>
                   </div>
                   <div class="video-actions">
+                    <MediaClipper
+                      :file-path="video.path"
+                      media-type="video"
+                      :is-dark-theme="isDarkTheme"
+                      @clipped="handleVideoClipped"
+                    />
                     <el-select v-model="video.scene" placeholder="选择场景" size="small" class="scene-select">
                       <el-option
                         v-for="tag in sceneTagOptions"
@@ -831,7 +855,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -861,10 +885,11 @@ import { useTaskStore } from '@/stores/taskStore.js'
 import { useMaterialStore } from '@/stores/materialStore.js'
 import { useSettingsStore } from '@/stores/settingsStore.js'
 import { useTagStore } from '@/stores/tagStore.js'
-import { taskApi } from '@/services/api'
+import { taskApi, mediaClipApi } from '@/services/api'
 import websocketService from '@/services/websocket'
 import VideoSelectorDialog from '@/components/VideoSelectorDialog.vue'
 import AudioSelectorDialog from '@/components/AudioSelectorDialog.vue'
+import MediaClipper from '@/components/MediaClipper.vue'
 
 const router = useRouter()
 const taskStore = useTaskStore()
@@ -874,6 +899,9 @@ const tagStore = useTagStore()
 
 // 表单引用
 const formRef = ref(null)
+
+// 注入主题状态
+const isDarkTheme = inject('isDarkTheme', ref(false))
 
 // 状态
 const showVideoSelectorDialog = ref(false)
@@ -1238,6 +1266,13 @@ const handleDualModeChange = (value) => {
     taskForm.leftAudio = null
     taskForm.rightAudio = null
   }
+}
+
+// 视频剪辑处理函数
+const handleVideoClipped = (data) => {
+  // data: { filePath, startTime, endTime, duration }
+  console.log('视频剪辑完成:', data)
+  // 视频已原地替换，不需要更新路径，浏览器会通过缓存控制自动刷新
 }
 
 // 提取音频
@@ -2214,30 +2249,27 @@ const handleTagGroupChange = async (groupId) => {
 .video-item,
 .audio-item {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: flex-start;
-  padding: 12px;
+  padding: 15px;
   background: #f5f7fa;
-  border-radius: 4px;
-  gap: 15px;
+  border-radius: 8px;
+  gap: 12px;
 }
 
 .video-info,
 .audio-info {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
   flex: 1;
-  min-width: 0;
-}
-
-.video-info {
-  flex-direction: column;
+  width: 100%;
 }
 
 .video-name {
   font-size: 14px;
-  max-width: 300px;
+  font-weight: 500;
+  color: #303133;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

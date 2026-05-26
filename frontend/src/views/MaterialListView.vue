@@ -227,6 +227,12 @@
               <div class="video-preview" v-if="createForm.opening_video">
                 <video :src="getFileUrl(createForm.opening_video)" controls />
                 <div class="video-actions">
+                  <MediaClipper
+                    :file-path="createForm.opening_video"
+                    media-type="video"
+                    :is-dark-theme="isDarkTheme"
+                    @clipped="handleVideoClipped"
+                  />
                   <el-button size="small" @click="analyzeFace(createForm.opening_video, 'opening')" :loading="faceAnalysisLoading[createForm.opening_video] && faceAnalysisLoading[createForm.opening_video] !== 'completed'" :disabled="(faceAnalysisLoading[createForm.opening_video] && faceAnalysisLoading[createForm.opening_video] !== 'completed') || analyzedVideoPaths[createForm.opening_video]">
                     <el-icon><Monitor /></el-icon> {{ faceAnalysisLoading[createForm.opening_video] === 'completed' ? '已完成' : (faceAnalysisLoading[createForm.opening_video] || analyzedVideoPaths[createForm.opening_video] ? '分析中...' : '面部分析') }}
                   </el-button>
@@ -265,6 +271,12 @@
                     </el-select>
                   </div>
                   <div class="video-actions">
+                    <MediaClipper
+                      :file-path="video.path"
+                      media-type="video"
+                      :is-dark-theme="isDarkTheme"
+                      @clipped="handleVideoClipped"
+                    />
                     <el-button size="small" @click="analyzeFace(video.path, 'loop')" :loading="faceAnalysisLoading[video.path] && faceAnalysisLoading[video.path] !== 'completed'" :disabled="(faceAnalysisLoading[video.path] && faceAnalysisLoading[video.path] !== 'completed') || analyzedVideoPaths[video.path]">
                       <el-icon><Monitor /></el-icon> {{ faceAnalysisLoading[video.path] === 'completed' ? '已完成' : (faceAnalysisLoading[video.path] || analyzedVideoPaths[video.path] ? '分析中...' : '面部分析') }}
                     </el-button>
@@ -287,6 +299,12 @@
               <div class="video-preview" v-if="createForm.ending_video">
                 <video :src="getFileUrl(createForm.ending_video)" controls />
                 <div class="video-actions">
+                  <MediaClipper
+                    :file-path="createForm.ending_video"
+                    media-type="video"
+                    :is-dark-theme="isDarkTheme"
+                    @clipped="handleVideoClipped"
+                  />
                   <el-button size="small" @click="analyzeFace(createForm.ending_video, 'ending')" :loading="faceAnalysisLoading[createForm.ending_video] && faceAnalysisLoading[createForm.ending_video] !== 'completed'" :disabled="(faceAnalysisLoading[createForm.ending_video] && faceAnalysisLoading[createForm.ending_video] !== 'completed') || analyzedVideoPaths[createForm.ending_video]">
                     <el-icon><Monitor /></el-icon> {{ faceAnalysisLoading[createForm.ending_video] === 'completed' ? '已完成' : (faceAnalysisLoading[createForm.ending_video] || analyzedVideoPaths[createForm.ending_video] ? '分析中...' : '面部分析') }}
                   </el-button>
@@ -392,6 +410,12 @@
                     </el-select>
                   </div>
                   <div class="video-actions">
+                    <MediaClipper
+                      :file-path="video.path"
+                      media-type="video"
+                      :is-dark-theme="isDarkTheme"
+                      @clipped="handleVideoClipped"
+                    />
                     <el-button size="small" type="danger" @click="removeSceneVideo(index)">
                       <el-icon><Delete /></el-icon>
                     </el-button>
@@ -545,30 +569,40 @@
       </template>
     </el-dialog>
 
-    <el-dialog 
-      v-model="showPreviewDialog" 
-      :title="previewItemData?.name || previewItemData?.role_name || previewItemData?.scene_name || '预览'" 
-      width="800px" 
+    <el-dialog
+      v-model="showPreviewDialog"
+      :title="previewItemData?.name || previewItemData?.role_name || previewItemData?.scene_name || '预览'"
+      width="900px"
       :class="['preview-dialog', { 'dark-theme': isDarkTheme }]"
       :modal-class="isDarkTheme ? 'dark-theme' : ''"
     >
       <div class="preview-container">
         <template v-if="currentTab === 'role' || currentTab === 'scene'">
-          <video 
-            v-if="previewVideoPath"
-            :src="getFileUrl(previewVideoPath)"
-            controls
-            autoplay
-            muted
-            class="preview-video"
-          />
+          <div class="video-preview-wrapper">
+            <video
+              v-if="previewVideoPath"
+              :src="getFileUrl(previewVideoPath)"
+              controls
+              autoplay
+              muted
+              class="preview-video"
+            />
+            <div v-if="previewVideoPath" class="preview-actions">
+              <MediaClipper
+                :file-path="previewVideoPath"
+                media-type="video"
+                :is-dark-theme="isDarkTheme"
+                @clipped="handlePreviewVideoClipped"
+              />
+            </div>
+          </div>
           <div v-else class="preview-empty">
             <el-icon><VideoCamera /></el-icon>
             <span>暂无视频素材</span>
           </div>
         </template>
         <template v-else-if="currentTab === 'audio' || currentTab === 'bgm'">
-          <audio 
+          <audio
             v-if="previewItemData && previewItemData.path"
             :src="getFileUrl(previewItemData.path)"
             controls
@@ -589,11 +623,11 @@
 <script setup>
 import { ref, computed, reactive, onMounted, onUnmounted, watch, inject } from 'vue'
 import { useRoute } from 'vue-router'
-import { materialApi } from '@/services/api'
-import { taskApi } from '@/services/api'
+import { materialApi, mediaClipApi } from '@/services/api'
 import { uploadAPI } from '@/api/upload'
 import { ElMessage } from 'element-plus'
 import { useTagStore } from '@/stores/tagStore'
+import MediaClipper from '@/components/MediaClipper.vue'
 
 const route = useRoute()
 const tagStore = useTagStore()
@@ -1650,6 +1684,26 @@ const handleDoubleModeChange = (value) => {
   }
 }
 
+// 视频剪辑处理函数
+const handleVideoClipped = (data) => {
+  // data: { filePath, startTime, endTime, duration }
+  console.log('视频剪辑完成:', data)
+  // 添加时间戳强制刷新视频预览
+  if (data.filePath === createForm.opening_video) {
+    // 开场视频已原地替换，不需要更新路径
+  }
+  // 视频已原地替换，不需要更新路径，浏览器会通过缓存控制自动刷新
+}
+
+// 预览对话框中的视频剪辑处理函数
+const handlePreviewVideoClipped = (data) => {
+  console.log('预览对话框 - 视频剪辑完成:', data)
+  // 视频已原地替换，刷新预览对话框
+  // 添加时间戳强制刷新视频预览
+  previewVideoPath.value = data.filePath + '?t=' + Date.now()
+  ElMessage.success('剪辑完成，视频已更新')
+}
+
 const validateDoubleModeAudio = () => {
   if (createForm.is_double_mode) {
     if (!createForm.left_audio_id || !createForm.right_audio_id) {
@@ -2494,6 +2548,7 @@ onUnmounted(() => {
 
 .video-item {
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
   gap: 12px;
   padding: 12px;
@@ -2502,21 +2557,22 @@ onUnmounted(() => {
 }
 
 .video-item video {
-  width: 160px;
-  height: 90px;
+  width: 320px;
+  height: 180px;
   object-fit: cover;
   border-radius: 4px;
 }
 
 .video-item.scene video {
-  width: 200px;
-  height: 112px;
+  width: 400px;
+  height: 225px;
 }
 
 .video-info {
-  flex: 1;
+  width: 100%;
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
   gap: 8px;
 }
 
@@ -2815,6 +2871,24 @@ onUnmounted(() => {
 .preview-video {
   width: 100%;
   max-height: 450px;
+}
+
+.video-preview-wrapper {
+  position: relative;
+
+  .preview-actions {
+    position: absolute;
+    bottom: 60px;
+    right: 10px;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 8px;
+    padding: 8px;
+
+    &:hover {
+      background: rgba(0, 0, 0, 0.8);
+    }
+  }
 }
 
 .preview-empty {

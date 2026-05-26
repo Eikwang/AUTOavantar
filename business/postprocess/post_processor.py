@@ -56,6 +56,7 @@ class PostProcessor:
         self.qwen_api_key = qwen_api_key
         self.qwen_client = None
         self.audio_mixer = AudioMixer(temp_dir=os.path.join(intermediate_dir, "temp"))
+        # 使用项目根目录加载封面提示词模版
         self.cover_prompt_template = self._load_cover_prompt_template()
 
         # 初始化 Qwen-Image 客户端
@@ -74,21 +75,31 @@ class PostProcessor:
         """从系统设置加载封面提示词模版"""
         default_template = "根据文案{summary}生成视频封面，风格简洁，突出主题"
         try:
-            config_path = os.path.join(self.CONFIG_DIR, "prompt_templates.yaml")
+            # 使用项目根目录加载配置文件
+            # post_processor.py 位于 business/postprocess/, 需要向上回溯三层到项目根目录
+            # business/postprocess -> business -> 项目根目录
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            config_path = os.path.join(project_root, 'backend', 'config', 'prompt_templates.yaml')
+            
             if os.path.exists(config_path):
                 import yaml
                 with open(config_path, 'r', encoding='utf-8') as f:
                     data = yaml.safe_load(f)
                     if data and 'cover_prompt_template' in data:
-                        return data['cover_prompt_template']
+                        template = data['cover_prompt_template']
+                        logger.info(f'封面提示词模版加载成功：{config_path}')
+                        return template
+            else:
+                logger.warning(f'配置文件不存在：{config_path}')
         except Exception as e:
-            logger.warning(f"加载封面提示词模版失败: {e}")
+            logger.warning(f'加载封面提示词模版失败：{e}')
         return default_template
 
     async def process(
         self,
         task: Task,
-        config: TaskConfig
+        config: TaskConfig,
+        progress_callback=None
     ) -> PostProcessResult:
         """
         执行后期处理
@@ -96,6 +107,7 @@ class PostProcessor:
         Args:
             task: 任务
             config: 配置
+            progress_callback: 进度回调函数 (progress: float, stage: str)
 
         Returns:
             处理结果
@@ -1287,42 +1299,69 @@ class PostProcessor:
         return prompt
 
     async def _insert_cover_frames(self, video_path: str, cover_path: str, frame_count: int = 5) -> str:
-        """在视频开头插入封面帧"""
+        """
+        在视频开头插入封面帧
+        
+        注意：
+        - 封面生成固定出图尺寸：竖屏 768*1376 或 横屏 1376*768
+        - 此方法会将封面图缩放到与视频一致的分辨率，不改变视频尺寸
+        """
         try:
-            logger.info(f"开始插入封面帧: {cover_path} 到视频 {video_path}")
+            logger.info(f"开始插入封面帧：{cover_path} 到视频 {video_path}")
 
             if not os.path.exists(cover_path):
-                logger.warning(f"封面图片不存在，跳过帧插入: {cover_path}")
+                logger.warning(f"封面图片不存在，跳过帧插入：{cover_path}")
                 return video_path
+
+            # 获取视频分辨率
+            video_meta = await self._get_video_metadata(video_path)
+            video_width = video_meta.get('width', 1920)
+            video_height = video_meta.get('height', 1080)
+            video_fps = video_meta.get('fps', 30.0)
+            
+            logger.info(f"视频分辨率：{video_width}x{video_height}, 帧率：{video_fps}fps")
 
             output_path = video_path.replace(".mp4", "_with_cover.mp4")
 
-            cover_duration = frame_count / 30.0
+            cover_duration = frame_count / video_fps
 
+            # 修复后的滤镜链：
+            # 1. 将封面图缩放到视频分辨率，并转换为 yuv420p 像素格式
+            # 2. 使用 trim 截取指定时长
+            # 3. 使用 concat 连接到视频开头
             cmd = [
                 "ffmpeg",
                 "-loop", "1",
                 "-i", cover_path,
                 "-i", video_path,
                 "-filter_complex",
-                f"[0:v]trim=duration={cover_duration}[cover];[cover][1:v]concat=n=2:v=1:a=0[outv]",
+                f"[0:v]scale={video_width}:{video_height}:force_original_aspect_ratio=decrease,pad={video_width}:{video_height}:(ow-iw)/2:(oh-ih)/2,format=yuv420p[cover_scaled];[cover_scaled]trim=duration={cover_duration}[cover];[cover][1:v]concat=n=2:v=1:a=0[outv]",
                 "-map", "[outv]",
                 "-map", "1:a?",
                 "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
                 "-c:a", "copy",
                 output_path
             ]
 
-            logger.info(f"封面帧插入命令: {' '.join(cmd)}")
-            await async_run_ffmpeg(cmd, check=True)
-            logger.info(f"封面帧插入成功")
+            logger.info(f"封面帧插入命令：{' '.join(cmd)}")
+            
+            # 执行 FFmpeg 命令，捕获详细错误输出
+            try:
+                returncode, stdout, stderr = await async_run_ffmpeg(cmd, check=True)
+                logger.info(f"封面帧插入成功 (已缩放到{video_width}x{video_height})")
+            except Exception as ffmpeg_error:
+                # 记录详细的 FFmpeg 错误输出
+                stderr_text = stderr.decode() if stderr else ''
+                logger.error(f"FFmpeg 详细错误输出：{stderr_text}")
+                raise ffmpeg_error
 
             os.replace(output_path, video_path)
 
             return video_path
 
         except Exception as e:
-            logger.error(f"插入封面帧失败: {e}")
+            logger.error(f"插入封面帧失败：{e}")
             return video_path
     
     async def _generate_cover_with_qwen(

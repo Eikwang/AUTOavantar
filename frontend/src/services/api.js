@@ -294,6 +294,27 @@ export const smartCutApi = {
   deleteMergedVideo: (filename) => request.delete(`/api/smart-cut/merged-videos/${filename}`)
 }
 
+// 音视频剪辑相关 API
+export const mediaClipApi = {
+  // 健康检查
+  health: () => request.get('/api/media-clip/health'),
+
+  // 获取媒体信息
+  getInfo: (data) => request.post('/api/media-clip/info', data),
+
+  // 剪辑媒体（按时间）
+  clip: (data) => request.post('/api/media-clip/clip', data),
+
+  // 剪辑媒体（按帧，视频专用）
+  clipByFrame: (data) => request.post('/api/media-clip/clip-by-frame', data),
+
+  // 获取音频波形
+  getWaveform: (data) => request.post('/api/media-clip/waveform', data),
+
+  // 获取视频音频波形
+  getVideoWaveform: (data) => request.post('/api/media-clip/video/waveform', data)
+}
+
 // 导出便捷方法
 export const login = (username, password) => authApi.login(username, password)
 export const register = (username, email, password) => authApi.register(username, email, password)
@@ -308,5 +329,6 @@ export default {
   services: servicesApi,
   system: systemApi,
   license: licenseApi,
-  smartCut: smartCutApi
+  smartCut: smartCutApi,
+  mediaClip: mediaClipApi
 }
