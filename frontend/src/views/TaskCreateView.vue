@@ -72,8 +72,8 @@
             <!-- 循环视频 -->
             <el-form-item label="循环视频">
               <div class="video-upload-section">
-                <div 
-                  v-for="(video, index) in taskForm.loopVideos" 
+                <div
+                  v-for="(video, index) in taskForm.loopVideos"
                   :key="index"
                   class="video-item"
                 >
@@ -81,11 +81,11 @@
                     <el-icon><VideoCamera /></el-icon>
                     <span class="video-name" :title="video.name">{{ video.name }}</span>
                     <div class="video-preview">
-                      <video :src="'/api/files/' + video.path + (video.timestamp ? '?t=' + video.timestamp : '')" controls width="200" height="150" class="preview-video"></video>
+                      <video :src="'/api/files/' + video.path + (video.timestamp ? '?t=' + video.timestamp : '')" controls width="320" height="180" class="preview-video"></video>
                     </div>
                   </div>
                   <div class="video-actions">
-                    <el-select v-model="video.emotion" placeholder="选择情绪">
+                    <el-select v-model="video.emotion" placeholder="选择情绪" size="small" class="emotion-select">
                       <el-option label="开心" value="happy" />
                       <el-option label="生气" value="angry" />
                       <el-option label="难过" value="sad" />
@@ -144,8 +144,8 @@
               <div class="video-upload-section">
                 <div class="tag-group-selector">
                   <span class="selector-label">标签组：</span>
-                  <el-select 
-                    v-model="taskForm.sceneTagGroupId" 
+                  <el-select
+                    v-model="taskForm.sceneTagGroupId"
                     placeholder="选择标签组"
                     class="tag-group-select"
                     @change="handleTagGroupChange"
@@ -158,8 +158,8 @@
                     />
                   </el-select>
                 </div>
-                <div 
-                  v-for="(video, index) in taskForm.sceneVideos" 
+                <div
+                  v-for="(video, index) in taskForm.sceneVideos"
                   :key="index"
                   class="video-item"
                 >
@@ -167,11 +167,11 @@
                     <el-icon><VideoCamera /></el-icon>
                     <span class="video-name" :title="video.name">{{ video.name }}</span>
                     <div class="video-preview">
-                      <video :src="'/api/files/' + video.path + (video.timestamp ? '?t=' + video.timestamp : '')" controls width="200" height="150" class="preview-video"></video>
+                      <video :src="'/api/files/' + video.path + (video.timestamp ? '?t=' + video.timestamp : '')" controls width="320" height="180" class="preview-video"></video>
                     </div>
                   </div>
                   <div class="video-actions">
-                    <el-select v-model="video.scene" placeholder="选择场景">
+                    <el-select v-model="video.scene" placeholder="选择场景" size="small" class="scene-select">
                       <el-option
                         v-for="tag in sceneTagOptions"
                         :key="tag.id"
@@ -2215,23 +2215,29 @@ const handleTagGroupChange = async (groupId) => {
 .audio-item {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   padding: 12px;
   background: #f5f7fa;
   border-radius: 4px;
+  gap: 15px;
 }
 
 .video-info,
 .audio-info {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   flex: 1;
+  min-width: 0;
+}
+
+.video-info {
+  flex-direction: column;
 }
 
 .video-name {
   font-size: 14px;
-  max-width: 200px;
+  max-width: 300px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2241,15 +2247,23 @@ const handleTagGroupChange = async (groupId) => {
   margin-top: 10px;
   border-radius: 4px;
   overflow: hidden;
+  width: 100%;
 }
 
 .preview-video {
   border: 1px solid #e4e7ed;
   border-radius: 4px;
+  display: block;
+  max-width: 100%;
 }
 
 .video-actions .el-select {
-  min-width: 120px;
+  min-width: 100px;
+}
+
+.emotion-select,
+.scene-select {
+  width: 120px;
 }
 
 .audio-info span {
@@ -2259,11 +2273,17 @@ const handleTagGroupChange = async (groupId) => {
   text-overflow: ellipsis;
 }
 
-.video-actions,
-.audio-actions {
+.video-actions {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.emotion-select,
+.scene-select {
+  width: 120px;
 }
 
 .video-params,

@@ -253,7 +253,7 @@
                 <div v-for="(video, index) in createForm.loop_videos" :key="index" class="video-item">
                   <video :src="getFileUrl(video.path)" controls />
                   <div class="video-info">
-                    <el-select v-model="video.emotion" placeholder="选择情绪标签" size="small">
+                    <el-select v-model="video.emotion" placeholder="选择情绪标签" size="small" class="emotion-select">
                       <el-option label="开心" value="happy" />
                       <el-option label="生气" value="angry" />
                       <el-option label="难过" value="sad" />
@@ -380,9 +380,9 @@
               </div>
               <div class="video-list">
                 <div v-for="(video, index) in createForm.scene_videos" :key="index" class="video-item scene">
-                  <video :src="getFileUrl(video.path)" />
+                  <video :src="getFileUrl(video.path)" controls />
                   <div class="video-info">
-                    <el-select v-model="video.tag" placeholder="选择场景标签" size="small">
+                    <el-select v-model="video.tag" placeholder="选择场景标签" size="small" class="scene-select">
                       <el-option
                         v-for="tag in sceneTagOptions"
                         :key="tag.id"
@@ -2494,7 +2494,7 @@ onUnmounted(() => {
 
 .video-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 12px;
   background: rgba(0, 0, 0, 0.3);
@@ -2502,24 +2502,34 @@ onUnmounted(() => {
 }
 
 .video-item video {
-  width: 120px;
-  height: 68px;
+  width: 160px;
+  height: 90px;
   object-fit: cover;
   border-radius: 4px;
 }
 
 .video-item.scene video {
-  width: 160px;
-  height: 90px;
+  width: 200px;
+  height: 112px;
 }
 
 .video-info {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .video-item .video-actions {
   background: transparent;
   padding: 0;
+  display: flex;
+  gap: 8px;
+}
+
+.emotion-select,
+.scene-select {
+  width: 140px;
 }
 
 .audio-list {

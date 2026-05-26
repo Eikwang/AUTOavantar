@@ -1180,7 +1180,15 @@ class PostProcessor:
             return 0.0
 
     async def _generate_cover(self, video_path: str, task: Task, config=None) -> Optional[str]:
-        """生成视频封面（从开场视频截取帧，调用 qwen-image API）"""
+        """
+        生成视频封面（从开场视频截取帧，调用本地 AI 模型）
+
+        功能：
+        1. 从开场视频提取参考帧
+        2. 调用本地 Qwen-Image-Edit 模型生成封面
+        3. 保存封面到独立文件（output/{task_id}_cover.jpg）
+        4. 返回封面路径供后续插入视频开头
+        """
         try:
             opening_video = getattr(task, 'opening_video', None)
             opening_video_with_tags = getattr(task, 'opening_video_with_tags', None)
@@ -1213,23 +1221,31 @@ class PostProcessor:
             cover_prompt = self._build_cover_prompt(cover_summary, config)
             logger.info(f"封面提示词: {cover_prompt}")
 
-            if self.qwen_client:
-                output_dir = os.path.join(self.intermediate_dir, "covers")
-                cover_path = self.qwen_client.generate_image_from_reference(
-                    prompt=cover_prompt,
-                    reference_image_path=reference_path,
-                    strength=0.5,
-                    output_dir=output_dir
-                )
+            # 调用本地 AI 模型生成封面
+            output_dir = os.path.join(self.output_dir, "covers")
+            os.makedirs(output_dir, exist_ok=True)
+            cover_path = os.path.join(output_dir, f"{task.task_id}_cover.jpg")
 
-                if os.path.exists(reference_path):
-                    os.remove(reference_path)
+            logger.info(f"开始调用本地 AI 模型生成封面...")
 
-                return cover_path
+            from business.postprocess.local_cover_generator import generate_cover_from_reference
+
+            generated_cover_path = generate_cover_from_reference(
+                reference_image_path=reference_path,
+                prompt=cover_prompt,
+                output_path=cover_path,
+                strength=0.5
+            )
+
+            # 清理参考帧
+            if os.path.exists(reference_path):
+                os.remove(reference_path)
+
+            if generated_cover_path and os.path.exists(generated_cover_path):
+                logger.info(f"封面生成成功：{generated_cover_path}")
+                return generated_cover_path
             else:
-                logger.warning("Qwen-Image 客户端未初始化，跳过封面生成")
-                if os.path.exists(reference_path):
-                    os.remove(reference_path)
+                logger.error("本地 AI 封面生成失败")
                 return None
 
         except Exception as e:
