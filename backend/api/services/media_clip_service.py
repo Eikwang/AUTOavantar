@@ -245,9 +245,12 @@ class MediaClipService:
         # 获取剪辑后的时长
         clip_duration = end_time - start_time
 
+        # 将输出路径转换为相对于backend目录的路径
+        output_path_relative = str(Path(output_for_ffmpeg).relative_to(self.backend_dir)).replace("\\", "/")
+
         return {
             "success": True,
-            "output_path": output_for_ffmpeg,
+            "output_path": output_path_relative,
             "duration": clip_duration,
             "start_time": start_time,
             "end_time": end_time
@@ -299,8 +302,21 @@ class MediaClipService:
         else:
             output_for_ffmpeg = str(full_path.with_name(f"{full_path.stem}_clip{full_path.suffix}"))
 
-        # 构建 FFmpeg 命令 - 音频剪辑：-ss在-i之前保证精确seek，重新编码保证质量
+        # 构建 FFmpeg 命令 - 音频剪辑：-ss在-i之前保证精确seek
+        # 输出使用.m4a格式（AAC编码），避免.mp3与aac编码器不兼容的问题
         clip_duration = end_time - start_time
+
+        # 根据是否替换原文件选择输出路径和格式
+        if replace_original:
+            # 替换原文件时，临时文件使用.m4a格式
+            output_temp = full_path.with_suffix(".temp.m4a")
+            output_for_ffmpeg = str(output_temp)
+        else:
+            output_for_ffmpeg = str(full_path.with_name(f"{full_path.stem}_clip{full_path.suffix}"))
+            # 如果原文件是mp3，输出改为m4a以兼容aac编码
+            if output_for_ffmpeg.endswith('.mp3'):
+                output_for_ffmpeg = output_for_ffmpeg[:-4] + '.m4a'
+
         cmd = [
             "ffmpeg",
             "-y",
@@ -308,7 +324,7 @@ class MediaClipService:
             "-i", str(full_path),
             "-t", str(clip_duration),
             "-c:a", "aac",
-            "-b:a", "128k",
+            "-b:a", "192k",
             "-avoid_negative_ts", "make_zero",
             output_for_ffmpeg
         ]
@@ -317,21 +333,26 @@ class MediaClipService:
 
         result = subprocess.run(cmd, capture_output=True, text=True, **SUBPROCESS_EXTRA)
         if result.returncode != 0:
-            if replace_original and temp_path.exists():
-                temp_path.unlink(missing_ok=True)
+            output_temp_path = Path(output_for_ffmpeg)
+            if replace_original and output_temp_path.exists():
+                output_temp_path.unlink(missing_ok=True)
             raise RuntimeError(f"FFmpeg 执行失败：{result.stderr}")
 
         # 如果替换原文件，验证临时文件后再替换
         if replace_original:
-            if not temp_path.exists() or temp_path.stat().st_size == 0:
-                temp_path.unlink(missing_ok=True)
+            output_temp_path = Path(output_for_ffmpeg)
+            if not output_temp_path.exists() or output_temp_path.stat().st_size == 0:
+                output_temp_path.unlink(missing_ok=True)
                 raise RuntimeError("FFmpeg 输出文件无效")
-            temp_path.replace(full_path)
-            output_for_ffmpeg = output_path
+            output_temp_path.replace(full_path)
+            output_for_ffmpeg = str(full_path)
+
+        # 将输出路径转换为相对于backend目录的路径
+        output_path_relative = str(Path(output_for_ffmpeg).relative_to(self.backend_dir)).replace("\\", "/")
 
         return {
             "success": True,
-            "output_path": output_for_ffmpeg,
+            "output_path": output_path_relative,
             "duration": end_time - start_time,
             "start_time": start_time,
             "end_time": end_time
@@ -436,9 +457,12 @@ class MediaClipService:
             temp_path.replace(full_path)
             output_for_ffmpeg = str(full_path)
 
+        # 将输出路径转换为相对于backend目录的路径
+        output_path_relative = str(Path(output_for_ffmpeg).relative_to(self.backend_dir)).replace("\\", "/")
+
         return {
             "success": True,
-            "output_path": output_for_ffmpeg,
+            "output_path": output_path_relative,
             "original_width": orig_w,
             "original_height": orig_h,
             "crop_x": crop_x,

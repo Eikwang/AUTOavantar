@@ -1,7 +1,7 @@
 <template>
   <div class="smart-cut-view">
     <el-card class="page-header">
-      <h1>智能裁剪</h1>
+      <h2 class="page-title">智能裁剪</h2>
       <p class="description">上传视频，智能识别分割点，快速提取精彩片段</p>
     </el-card>
 
@@ -228,7 +228,7 @@
             <span>裁剪失败：{{ errorMessage }}</span>
           </template>
         </el-alert>
-        <el-button type="primary" @click="retryCutting" style="margin-top: 12px;">
+        <el-button type="primary" @click="retryCutting" class="retry-button">
           <el-icon><RefreshLeft /></el-icon>
           重试
         </el-button>
@@ -871,7 +871,17 @@ const handleVideoCropped = (data) => {
 const handlePreviewSegmentClipped = (data) => {
   ElMessage.success('剪辑成功')
   if (previewSegmentInfo.value) {
-    // 更新视频路径以刷新播放器（加时间戳破缓存）
+    // 更新segments数组中对应segment的视频路径
+    const segIndex = segments.value.findIndex(s => s.segment_id === previewSegmentInfo.value.segment_id)
+    if (segIndex !== -1) {
+      // 保持原有segment_id和reason，只更新视频路径和时间戳
+      segments.value[segIndex] = {
+        ...segments.value[segIndex],
+        video_path: data.filePath,
+        timestamp: Date.now()
+      }
+    }
+    // 同时更新预览信息以刷新播放器
     previewSegmentInfo.value = { ...previewSegmentInfo.value, video_path: data.filePath, timestamp: Date.now() }
   }
   showClipDialog.value = false
@@ -1425,27 +1435,27 @@ onUnmounted(() => {
 
 <style scoped>
 .smart-cut-view {
-  padding: 20px;
+  padding: var(--space-lg);
   max-width: 1400px;
   margin: 0 auto;
 }
 
 .page-header {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-lg);
 }
 
 .page-header h1 {
-  margin: 0 0 8px 0;
-  font-size: 24px;
+  margin: 0 0 var(--space-sm) 0;
+  font-size: var(--font-size-3xl);
 }
 
 .page-header .description {
   margin: 0;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 .upload-section {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-lg);
 }
 
 .video-uploader {
@@ -1462,20 +1472,20 @@ onUnmounted(() => {
 }
 
 .upload-progress {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-lg);
 }
 
 .progress-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 40px 0;
+  gap: var(--space-base);
+  padding: var(--space-3xl) 0;
 }
 
 .video-section {
   display: flex;
-  gap: 20px;
+  gap: var(--space-lg);
 }
 
 .video-preview {
@@ -1490,14 +1500,14 @@ onUnmounted(() => {
 
 .video-preview .header-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-sm);
 }
 
 .video-container {
   background: #000;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   overflow: hidden;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-base);
   height: 360px;
   display: flex;
   align-items: center;
@@ -1513,7 +1523,7 @@ onUnmounted(() => {
 }
 
 .video-info {
-  margin-top: 16px;
+  margin-top: var(--space-base);
 }
 
 .config-panel {
@@ -1521,36 +1531,40 @@ onUnmounted(() => {
 }
 
 .config-hint {
-  margin-left: 12px;
-  color: #909399;
-  font-size: 12px;
+  margin-left: var(--space-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
 }
 
 .cutting-progress {
-  margin-top: 20px;
+  margin-top: var(--space-lg);
 }
 
 .progress-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-base);
 }
 
 .progress-details {
   display: flex;
   justify-content: space-between;
-  margin-top: 12px;
-  color: #909399;
-  font-size: 14px;
+  margin-top: var(--space-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-base);
 }
 
 .progress-error {
-  margin-top: 16px;
+  margin-top: var(--space-base);
+}
+
+.retry-button {
+  margin-top: var(--space-md);
 }
 
 .segments-section {
-  margin-top: 20px;
+  margin-top: var(--space-lg);
 }
 
 .segments-section .card-header {
@@ -1562,19 +1576,19 @@ onUnmounted(() => {
 .segments-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
+  gap: var(--space-base);
 }
 
 .segment-card {
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
   overflow: hidden;
   transition: all 0.3s;
 }
 
 .segment-card:hover {
-  border-color: #409eff;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-md);
 }
 
 .segment-thumbnail {
@@ -1591,61 +1605,61 @@ onUnmounted(() => {
 
 .segment-duration {
   position: absolute;
-  bottom: 8px;
-  right: 8px;
+  bottom: var(--space-sm);
+  right: var(--space-sm);
   background: rgba(0, 0, 0, 0.7);
   color: #fff;
   padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
 }
 
 .segment-reason {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: var(--space-sm);
+  left: var(--space-sm);
 }
 
 .segment-select-btn {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: var(--space-sm);
+  right: var(--space-sm);
 }
 
 .segment-delete-btn {
   position: absolute;
-  top: 8px;
+  top: var(--space-sm);
   right: 40px;
 }
 
 .segment-selected {
-  border-color: #409eff;
+  border-color: var(--color-primary);
   border-width: 2px;
   box-shadow: 0 0 8px rgba(64, 158, 255, 0.3);
 }
 
 .segment-info {
-  padding: 8px 12px;
-  font-size: 12px;
-  color: #606266;
+  padding: var(--space-sm) var(--space-md);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-regular);
 }
 
 .batch-actions {
-  margin-top: 16px;
+  margin-top: var(--space-base);
   display: flex;
-  gap: 12px;
+  gap: var(--space-md);
 }
 
 .preview-dialog-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-base);
 }
 
 .preview-video-container {
   height: 400px;
   background: #000;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1661,11 +1675,11 @@ onUnmounted(() => {
 }
 
 .preview-info {
-  margin-top: 12px;
+  margin-top: var(--space-md);
 }
 
 .pending-section {
-  margin-top: 20px;
+  margin-top: var(--space-lg);
 }
 
 .pending-section .card-header {
@@ -1677,7 +1691,7 @@ onUnmounted(() => {
 .pending-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-sm);
   max-height: 300px;
   overflow-y: auto;
 }
@@ -1685,16 +1699,16 @@ onUnmounted(() => {
 .pending-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
+  gap: var(--space-md);
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
 }
 
 .pending-thumbnail {
   width: 80px;
   height: 45px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -1709,35 +1723,35 @@ onUnmounted(() => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-xs);
 }
 
 .pending-name {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
 }
 
 .pending-duration {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
 }
 
 .pending-actions {
-  margin-top: 16px;
+  margin-top: var(--space-base);
   display: flex;
-  gap: 12px;
+  gap: var(--space-md);
 }
 
 /* 操作按钮强制并排 */
 .action-buttons-row {
   display: flex;
-  gap: 12px;
+  gap: var(--space-md);
   flex-wrap: nowrap;
 }
 
 .action-buttons-row :deep(.el-form-item__content) {
   display: flex;
-  gap: 12px;
+  gap: var(--space-md);
   flex-wrap: nowrap;
   width: 100%;
 }
@@ -1751,13 +1765,13 @@ onUnmounted(() => {
 .audio-dialog-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-base);
 }
 
 .audio-player-container {
-  padding: 20px;
-  background: #f5f7fa;
-  border-radius: 8px;
+  padding: var(--space-lg);
+  background: var(--bg-muted);
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1771,12 +1785,12 @@ onUnmounted(() => {
 .transition-settings {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-md);
 }
 
 .transition-row {
   display: flex;
-  gap: 12px;
+  gap: var(--space-md);
 }
 
 .transition-select {
@@ -1787,25 +1801,25 @@ onUnmounted(() => {
 
 .transition-random {
   display: flex;
-  gap: 16px;
+  gap: var(--space-base);
   align-items: center;
 }
 
 .transition-duration {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm);
 }
 
 .duration-label {
-  color: #606266;
-  font-size: 14px;
+  color: var(--color-text-regular);
+  font-size: var(--font-size-base);
 }
 
 /* 历史记录区域 - 始终置顶显示 */
 .history-section {
-  margin-top: 20px;
-  margin-bottom: 20px;
+  margin-top: var(--space-lg);
+  margin-bottom: var(--space-lg);
 }
 
 .history-section .card-header {
@@ -1817,17 +1831,17 @@ onUnmounted(() => {
 .history-section .card-header span {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm);
 }
 
 .history-empty {
-  padding: 20px;
+  padding: var(--space-lg);
 }
 
 .history-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
+  gap: var(--space-base);
   max-height: 300px;
   overflow-y: auto;
 }
@@ -1835,18 +1849,18 @@ onUnmounted(() => {
 .history-card {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
+  gap: var(--space-base);
+  padding: var(--space-base);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all 0.3s;
   position: relative;
 }
 
 .history-card:hover {
-  border-color: #409eff;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-md);
 }
 
 .history-icon {
@@ -1855,9 +1869,9 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f0f2f5;
-  border-radius: 8px;
-  color: #409eff;
+  background: var(--bg-muted);
+  border-radius: var(--radius-md);
+  color: var(--color-primary);
 }
 
 .history-info {
@@ -1866,15 +1880,15 @@ onUnmounted(() => {
 }
 
 .history-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: #303133;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm);
 }
 
 .status-tag {
@@ -1883,22 +1897,22 @@ onUnmounted(() => {
 
 .history-meta {
   display: flex;
-  gap: 12px;
-  margin-top: 4px;
-  font-size: 12px;
-  color: #909399;
+  gap: var(--space-md);
+  margin-top: var(--space-xs);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
 }
 
 .history-time {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #c0c4cc;
+  margin-top: var(--space-xs);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-placeholder);
 }
 
 .history-delete {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: var(--space-sm);
+  right: var(--space-sm);
 }
 
 /* 响应式 */
@@ -1919,18 +1933,18 @@ onUnmounted(() => {
 /* ==================== 媒体剪辑对话框样式 ==================== */
 .media-clip-dialog {
   :deep(.el-dialog) {
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     overflow: hidden;
   }
 
   :deep(.el-dialog__header) {
-    padding: 20px 24px;
-    border-bottom: 1px solid #e5e7eb;
+    padding: var(--space-lg) var(--space-xl);
+    border-bottom: 1px solid var(--color-border-strong);
   }
 
   :deep(.el-dialog__title) {
-    font-size: 18px;
-    font-weight: 600;
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
   }
 
   :deep(.el-dialog__body) {
@@ -1941,18 +1955,18 @@ onUnmounted(() => {
 }
 
 .media-clip-container {
-  padding: 24px;
+  padding: var(--space-xl);
 }
 
 .media-clip-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-base);
 }
 
 .media-preview-player {
   background: #000;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   overflow: hidden;
 
   .video-player {
@@ -1963,27 +1977,27 @@ onUnmounted(() => {
 
   .audio-player {
     width: 100%;
-    padding: 20px;
+    padding: var(--space-lg);
   }
 }
 
 .dark-theme {
   .media-clip-dialog {
     :deep(.el-dialog) {
-      background: #1e1e1e;
-      border: 1px solid #374151;
+      background: var(--bg-card-solid);
+      border: 1px solid var(--color-border-strong);
     }
 
     :deep(.el-dialog__header) {
-      border-bottom-color: #374151;
+      border-bottom-color: var(--color-border-strong);
     }
 
     :deep(.el-dialog__title) {
-      color: #f3f4f6;
+      color: var(--color-text-primary);
     }
 
     :deep(.el-dialog__body) {
-      background: #1e1e1e;
+      background: var(--bg-card-solid);
     }
   }
 
@@ -1994,17 +2008,23 @@ onUnmounted(() => {
 
 /* 视频操作栏 */
 .video-actions-bar {
-  padding: 12px 16px;
-  background: #f9fafb;
-  border-top: 1px solid #e5e7eb;
+  padding: var(--space-md) var(--space-base);
+  background: var(--bg-muted);
+  border-top: 1px solid var(--color-border-strong);
   display: flex;
   justify-content: flex-end;
 }
 
 /* 预览操作栏 */
 .preview-actions-bar {
-  padding: 12px 0;
+  padding: var(--space-md) 0;
   display: flex;
   justify-content: center;
+}
+
+/* ==================== 暗色主题覆盖 ==================== */
+/* 选中片段阴影在暗色下使用品牌色 */
+:global(body.dark-theme) .smart-cut-view .segment-selected {
+  box-shadow: 0 0 8px rgba(0, 217, 255, 0.3);
 }
 </style>

@@ -164,13 +164,11 @@ async def upload_audio(
     
     # 根据音频类型确定保存目录
     if audio_type == "bgm":
-        # BGM保存到 backend/data/BGM 目录
-        # upload.py 位于 backend/api/routers/，向上找3级到达 backend/
-        backend_root = Path(__file__).resolve().parent.parent.parent
-        bgm_dir = backend_root / "data" / "BGM"
-        bgm_dir.mkdir(parents=True, exist_ok=True)
-        file_path_obj = bgm_dir / unique_filename
-        base_dir = None
+        # BGM 保存到 uploads/audios/bgm 目录（与其他音频保持一致）
+        upload_dir = os.path.join(settings.UPLOAD_DIR, "audios", "bgm")
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path_obj = Path(upload_dir) / unique_filename
+        base_dir = settings.UPLOAD_DIR
     else:
         # 其他音频类型保存到上传目录
         upload_dir = os.path.join(settings.UPLOAD_DIR, "audios", audio_type)
@@ -195,13 +193,14 @@ async def upload_audio(
             f.write(content)
         
         logger.info(f"音频上传成功: {file_path}")
-        
-        # 计算相对路径
-        if audio_type == "bgm":
-            relative_path = f"backend/data/BGM/{unique_filename}"
-        else:
-            relative_path = os.path.relpath(file_path, base_dir)
-        
+
+        # 计算相对路径（统一使用 uploads/ 前缀，正斜杠）
+        # os.path.relpath 在 Windows 上会返回反斜杠，需要转换
+        relative_path = os.path.relpath(file_path, base_dir).replace("\\", "/")
+        # 确保路径以 uploads/ 开头
+        if not relative_path.startswith("uploads/"):
+            relative_path = "uploads/" + relative_path
+
         return {
             "code": 200,
             "message": "上传成功",
