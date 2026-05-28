@@ -1317,7 +1317,7 @@ const restoreHistory = async (item) => {
       thumbnail: item.thumbnail || ''
     }
     if (item.video_path) {
-      videoUrl.value = `/files/${item.video_path}`
+      videoUrl.value = `/files/${item.video_path}?t=${Date.now()}`
     }
     segments.value = []
     ElMessage.success('已恢复上传状态，可继续裁剪')
@@ -1340,7 +1340,7 @@ const restoreHistory = async (item) => {
       }
       // 设置视频 URL 以便播放原视频
       if (item.video_path) {
-        videoUrl.value = `/files/${item.video_path}`
+        videoUrl.value = `/files/${item.video_path}?t=${Date.now()}`
       }
       ElMessage.success('已恢复历史记录')
     }
