@@ -278,7 +278,7 @@ class SmartCutService:
                 b64_data = re.sub(r'^data:image/\w+;base64,', '', thumbnail_base64)
                 with open(thumbnail_path, "wb") as f:
                     f.write(base64.b64decode(b64_data))
-                thumbnail_relative = str(thumbnail_path.relative_to(self.base_dir))
+                thumbnail_relative = str(thumbnail_path.relative_to(self.base_dir)).replace("\\", "/")
             except Exception as e:
                 logger.warning(f"缩略图文件保存失败: {e}")
 
@@ -286,7 +286,7 @@ class SmartCutService:
         try:
             from api.services.database import get_database_service
             db = get_database_service()
-            relative_path = str(video_path.relative_to(self.base_dir))
+            relative_path = str(video_path.relative_to(self.base_dir)).replace("\\", "/")
             await db.smart_cut_task_create(
                 task_id=video_id,
                 video_path=relative_path,
@@ -306,7 +306,7 @@ class SmartCutService:
         # 8. 返回结果
         return {
             "video_id": video_id,
-            "video_path": str(video_path.relative_to(self.base_dir)),
+            "video_path": str(video_path.relative_to(self.base_dir)).replace("\\", "/"),
             "video_name": filename,
             "duration": video_info.get("duration", 0),
             "fps": video_info.get("fps", 0),
@@ -372,11 +372,21 @@ class SmartCutService:
             return None
 
         segments_info = json.loads(task.get("segments_info") or "null")
+        # 规范化所有路径
+        normalized_segments = []
+        if segments_info:
+            for seg in segments_info:
+                normalized_seg = {
+                    **seg,
+                    "thumbnail": seg.get("thumbnail", "").replace("\\", "/") if seg.get("thumbnail") else "",
+                    "video_path": seg.get("video_path", "").replace("\\", "/") if seg.get("video_path") else ""
+                }
+                normalized_segments.append(normalized_seg)
 
         return {
             "task_id": task_id,
-            "video_path": task["video_path"],
-            "segments": segments_info or []
+            "video_path": task["video_path"].replace("\\", "/") if task.get("video_path") else "",
+            "segments": normalized_segments or []
         }
 
     async def get_history(self) -> List[Dict[str, Any]]:
@@ -394,9 +404,10 @@ class SmartCutService:
             thumbnail = task.get("thumbnail", "")
             if thumbnail and thumbnail.startswith("data:"):
                 thumbnail = ""
+            thumbnail = thumbnail.replace("\\", "/") if thumbnail else ""
             history_list.append({
                 "task_id": task["task_id"],
-                "video_path": task.get("video_path", ""),
+                "video_path": task.get("video_path", "").replace("\\", "/"),
                 "video_name": task["video_name"] or "未命名视频",
                 "video_duration": task["video_duration"] or 0,
                 "video_fps": task["video_fps"] or 0,
@@ -404,7 +415,11 @@ class SmartCutService:
                 "video_height": task["video_height"] or 0,
                 "total_frames": task["total_frames"] or 0,
                 "segments_count": len(segments_info),
-                "segments_info": segments_info,
+                "segments_info": [
+                    {**seg, "thumbnail": seg.get("thumbnail", "").replace("\\", "/") if seg.get("thumbnail") else "",
+                     "video_path": seg.get("video_path", "").replace("\\", "/") if seg.get("video_path") else ""}
+                    for seg in segments_info
+                ],
                 "thumbnail": thumbnail,
                 "created_at": task["created_at"],
                 "status": task["status"]
@@ -789,8 +804,8 @@ class SmartCutService:
                     "duration": round(duration, 2),
                     "reason": reason,
                     "reason_label": reason_label,
-                    "thumbnail": str(thumbnail_path.relative_to(self.base_dir)),
-                    "video_path": str(segment_path.relative_to(self.base_dir))
+                    "thumbnail": str(thumbnail_path.relative_to(self.base_dir)).replace("\\", "/"),
+                    "video_path": str(segment_path.relative_to(self.base_dir)).replace("\\", "/")
                 })
 
             # 更新进度（progress_callback 是 async 函数，需要 await）
@@ -900,7 +915,7 @@ class SmartCutService:
             logger.info(f"音频提取成功: {audio_path}")
 
             return {
-                "audio_path": str(audio_path.relative_to(self.base_dir)),
+                "audio_path": str(audio_path.relative_to(self.base_dir)).replace("\\", "/"),
                 "duration": duration,
                 "name": audio_name
             }
@@ -1118,7 +1133,7 @@ class SmartCutService:
             logger.info(f"视频合成成功: {output_path}")
 
             return {
-                "output_path": str(output_path.relative_to(self.base_dir.parent)),
+                "output_path": str(output_path.relative_to(self.base_dir.parent)).replace("\\", "/"),
                 "duration": duration,
                 "file_size": file_size
             }
