@@ -121,6 +121,11 @@
             @loadedmetadata="handleVideoLoaded"
           ></video>
         </div>
+        <div class="video-actions-bar">
+          <el-button type="warning" size="small" @click="openClipDialog(videoInfo.video_path, 'video')">
+            <el-icon><Scissor /></el-icon> 剪辑视频
+          </el-button>
+        </div>
 
         <div class="video-info">
           <el-descriptions :column="2" border size="small">
@@ -308,11 +313,16 @@
           <video
             ref="previewVideoPlayer"
             v-if="previewSegmentInfo"
-            :src="`/files/${previewSegmentInfo.video_path}`"
+            :src="`/files/${previewSegmentInfo.video_path}${previewSegmentInfo.timestamp ? '?t=' + previewSegmentInfo.timestamp : ''}`"
             controls
             autoplay
             class="preview-video"
           ></video>
+        </div>
+        <div class="preview-actions-bar">
+          <el-button type="warning" size="small" @click="openClipDialog(previewSegmentInfo.video_path, 'video')">
+            <el-icon><Scissor /></el-icon> 剪辑此片段
+          </el-button>
         </div>
         <div v-if="previewSegmentInfo" class="preview-info">
           <el-descriptions :column="2" border size="small">
@@ -472,11 +482,35 @@
         <el-button type="success" @click="addToBGM">添加BGM</el-button>
       </template>
     </el-dialog>
+
+    <!-- 媒体剪辑对话框 -->
+    <el-dialog
+      v-model="showClipDialog"
+      :title="clipMediaType === 'video' ? '视频剪辑' : '音频剪辑'"
+      width="900px"
+      :class="['media-clip-dialog', { 'dark-theme': isDarkTheme }]"
+      :close-on-click-modal="false"
+    >
+      <div class="media-clip-container">
+        <div v-if="clipItemPath" class="media-clip-content">
+          <!-- 剪辑器（自带播放器） -->
+          <MediaClipper
+            v-if="clipItemPath"
+            :file-path="clipItemPath"
+            :media-type="clipMediaType"
+            :is-dark-theme="isDarkTheme"
+            default-mode="trim"
+            @clipped="clipMediaType === 'video' ? handleVideoClipped : handlePreviewSegmentClipped"
+            @cropped="handleVideoCropped"
+          />
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -496,6 +530,7 @@ import {
   Headset
 } from '@element-plus/icons-vue'
 import { smartCutApi, materialApi } from '@/services/api'
+import MediaClipper from '@/components/MediaClipper.vue'
 
 const router = useRouter()
 
@@ -555,6 +590,12 @@ const pendingSegments = ref([])
 const previewDialogVisible = ref(false)
 const previewSegmentInfo = ref(null)
 const previewVideoPlayer = ref(null)
+
+// 剪辑对话框
+const showClipDialog = ref(false)
+const clipItemPath = ref('')
+const clipMediaType = ref('video')
+const clipPlayerRef = ref(null)
 
 // 合成弹窗
 const mergeDialogVisible = ref(false)
@@ -803,6 +844,41 @@ const handleFileChange = async (file) => {
 
 const handleVideoLoaded = () => {
   console.log('视频加载完成')
+}
+
+// 打开剪辑对话框
+const openClipDialog = (path, mediaType) => {
+  clipItemPath.value = path
+  clipMediaType.value = mediaType
+  showClipDialog.value = true
+}
+
+// 原视频剪辑回调
+const handleVideoClipped = (data) => {
+  ElMessage.success('剪辑成功')
+  if (videoInfo.value) {
+    videoInfo.value = { ...videoInfo.value, timestamp: Date.now() }
+    videoUrl.value = `/files/${data.filePath}?t=${Date.now()}`
+  }
+  showClipDialog.value = false
+}
+
+const handleVideoCropped = (data) => {
+  handleVideoClipped(data)
+}
+
+// 片段预览剪辑回调
+const handlePreviewSegmentClipped = (data) => {
+  ElMessage.success('剪辑成功')
+  if (previewSegmentInfo.value) {
+    // 更新视频路径以刷新播放器（加时间戳破缓存）
+    previewSegmentInfo.value = { ...previewSegmentInfo.value, video_path: data.filePath, timestamp: Date.now() }
+  }
+  showClipDialog.value = false
+}
+
+const handlePreviewSegmentCropped = (data) => {
+  handlePreviewSegmentClipped(data)
 }
 
 const resetUpload = () => {
@@ -1838,5 +1914,97 @@ onUnmounted(() => {
   .history-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* ==================== 媒体剪辑对话框样式 ==================== */
+.media-clip-dialog {
+  :deep(.el-dialog) {
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  :deep(.el-dialog__header) {
+    padding: 20px 24px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  :deep(.el-dialog__title) {
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  :deep(.el-dialog__body) {
+    padding: 0;
+    overflow-y: auto;
+    max-height: 70vh;
+  }
+}
+
+.media-clip-container {
+  padding: 24px;
+}
+
+.media-clip-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.media-preview-player {
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+
+  .video-player {
+    width: 100%;
+    max-height: 500px;
+    object-fit: contain;
+  }
+
+  .audio-player {
+    width: 100%;
+    padding: 20px;
+  }
+}
+
+.dark-theme {
+  .media-clip-dialog {
+    :deep(.el-dialog) {
+      background: #1e1e1e;
+      border: 1px solid #374151;
+    }
+
+    :deep(.el-dialog__header) {
+      border-bottom-color: #374151;
+    }
+
+    :deep(.el-dialog__title) {
+      color: #f3f4f6;
+    }
+
+    :deep(.el-dialog__body) {
+      background: #1e1e1e;
+    }
+  }
+
+  .media-preview-player {
+    background: #000;
+  }
+}
+
+/* 视频操作栏 */
+.video-actions-bar {
+  padding: 12px 16px;
+  background: #f9fafb;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* 预览操作栏 */
+.preview-actions-bar {
+  padding: 12px 0;
+  display: flex;
+  justify-content: center;
 }
 </style>

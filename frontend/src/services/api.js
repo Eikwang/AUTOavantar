@@ -312,7 +312,10 @@ export const mediaClipApi = {
   getWaveform: (data) => request.post('/api/media-clip/waveform', data),
 
   // 获取视频音频波形
-  getVideoWaveform: (data) => request.post('/api/media-clip/video/waveform', data)
+  getVideoWaveform: (data) => request.post('/api/media-clip/video/waveform', data),
+
+  // 画面裁剪视频
+  crop: (data) => request.post('/api/media-clip/crop', data)
 }
 
 // 导出便捷方法

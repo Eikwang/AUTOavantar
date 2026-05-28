@@ -62,7 +62,7 @@ else:
     QUANT_TYPE = "INT4"
 
 STANDALONE_MODEL_PATH = r".\standalone_models\Qwen-Image-Edit-2509"
-IMAGE_PATH = r".\014.png"
+IMAGE_PATH = r".\633.png"
 
 # 是否使用独立模型目录（推荐用于部署到其他项目）
 USE_STANDALONE_MODEL = True
@@ -73,7 +73,7 @@ USE_STANDALONE_MODEL = True
 # ============================================================
 SIMULATE_VRAM = None  # 可选值：None, 16, 12, 8, 6
 
-prompt = """图中的人举着一张纸板，镜头拉近，可以清晰看到上面写着中文书法，文字内容：莫说春风不解意！今日份踏春指南来了，美景不要辜负哦~”"""
+prompt = """图中的人正对着镜头展示一张海报，镜头拉近，可以清晰看到海报上面用书法写着中文，文字内容是：从田间到餐桌：湛江雷州白切鸡的 五大美味密码！”"""
 
 # ============================================================
 # Step 1: Detect Hardware & Select Verified Strategy
@@ -166,7 +166,6 @@ pipeline = QwenImageEditPlusPipeline.from_pretrained(
     model_path,
     transformer=transformer,
     torch_dtype=torch.bfloat16,
-    cache_dir=CACHE_PATH if not USE_STANDALONE_MODEL else None,
     local_files_only=USE_STANDALONE_MODEL
 )
 

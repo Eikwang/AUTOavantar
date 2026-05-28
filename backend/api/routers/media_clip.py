@@ -46,6 +46,20 @@ class MediaInfoResponse(BaseModel):
     channels: Optional[int] = None
 
 
+class MediaCropRequest(BaseModel):
+    """画面裁剪请求"""
+    file_path: str = Field(..., description="视频文件路径")
+    x: float = Field(..., ge=0, le=1, description="裁剪区域左上角 X（百分比 0-1）")
+    y: float = Field(..., ge=0, le=1, description="裁剪区域左上角 Y（百分比 0-1）")
+    width: float = Field(..., gt=0, le=1, description="裁剪区域宽度（百分比 0-1）")
+    height: float = Field(..., gt=0, le=1, description="裁剪区域高度（百分比 0-1）")
+    replace_original: bool = Field(default=True, description="是否替换原文件")
+
+    def is_valid(self) -> bool:
+        return (self.x + self.width <= 1.0 + 1e-6 and
+                self.y + self.height <= 1.0 + 1e-6)
+
+
 class WaveformResponse(BaseModel):
     """波形数据响应"""
     peaks: list
@@ -163,6 +177,53 @@ async def clip_media(request: MediaClipRequest):
     except Exception as e:
         logger.error(f"剪辑异常：{e}")
         return ApiResponse(code=500, message=f"剪辑失败：{str(e)}")
+
+
+@router.post("/crop", response_model=ApiResponse)
+async def crop_video(request: MediaCropRequest):
+    """
+    画面裁剪视频
+
+    Args:
+        file_path: 视频文件路径
+        x: 裁剪区域左上角 X（百分比 0-1）
+        y: 裁剪区域左上角 Y（百分比 0-1）
+        width: 裁剪区域宽度（百分比 0-1）
+        height: 裁剪区域高度（百分比 0-1）
+        replace_original: 是否替换原文件
+
+    Returns:
+        裁剪结果
+    """
+    if not request.is_valid():
+        return ApiResponse(code=400, message="裁剪区域无效：超出视频边界")
+
+    service = get_media_clip_service()
+
+    try:
+        result = service.crop_video(
+            video_path=request.file_path,
+            x=request.x,
+            y=request.y,
+            width=request.width,
+            height=request.height,
+            replace_original=request.replace_original
+        )
+
+        logger.info(f"画面裁剪完成：{result}")
+
+        return ApiResponse(
+            code=200,
+            message="裁剪成功",
+            data=result
+        )
+
+    except ValueError as e:
+        logger.warning(f"画面裁剪失败：{e}")
+        return ApiResponse(code=400, message=str(e))
+    except Exception as e:
+        logger.error(f"画面裁剪异常：{e}")
+        return ApiResponse(code=500, message=f"裁剪失败：{str(e)}")
 
 
 @router.post("/clip-by-frame", response_model=ApiResponse)

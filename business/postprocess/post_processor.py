@@ -41,7 +41,7 @@ class PostProcessor:
         self,
         intermediate_dir: str = "backend/output",
         output_dir: str = "output",
-        qwen_api_key: Optional[str] = None
+        **kwargs
     ):
         """
         初始化后期处理器
@@ -49,24 +49,11 @@ class PostProcessor:
         Args:
             intermediate_dir: 中间处理目录（字幕、BGM、合并等中间文件存放处）
             output_dir: 最终输出目录（只有完成全部后期处理的视频才存放此处）
-            qwen_api_key: Qwen-Image API 密钥（可选）
         """
         self.intermediate_dir = intermediate_dir
         self.output_dir = output_dir
-        self.qwen_api_key = qwen_api_key
-        self.qwen_client = None
         self.audio_mixer = AudioMixer(temp_dir=os.path.join(intermediate_dir, "temp"))
-        # 使用项目根目录加载封面提示词模版
         self.cover_prompt_template = self._load_cover_prompt_template()
-
-        # 初始化 Qwen-Image 客户端
-        if qwen_api_key:
-            try:
-                from core.api_clients import QwenImageClient
-                self.qwen_client = QwenImageClient(api_key=qwen_api_key)
-                logger.info("Qwen-Image 客户端初始化成功")
-            except Exception as e:
-                logger.warning(f"Qwen-Image 客户端初始化失败：{e}")
 
         os.makedirs(intermediate_dir, exist_ok=True)
         os.makedirs(output_dir, exist_ok=True)
@@ -199,33 +186,47 @@ class PostProcessor:
             # 2. 添加字幕
             subtitle_path = None
             if config.enable_subtitle:
+                if progress_callback:
+                    progress_callback(0.0, "正在添加字幕")
                 logger.info("开始添加字幕...")
                 subtitle_path = await self._add_subtitle(
                     output_path,
                     task,
                     config
                 )
+                if progress_callback:
+                    progress_callback(1.0, "字幕添加完成")
             else:
                 logger.info("字幕功能已禁用，跳过字幕添加步骤")
 
             # 3. 添加 BGM
             if task.bgm_path:
+                if progress_callback:
+                    progress_callback(0.0, "正在添加背景音乐")
                 logger.info(f"开始添加 BGM: {task.bgm_path}")
                 output_path = await self._add_bgm(
                     output_path,
                     task.bgm_path,
                     config.bgm_volume
                 )
+                if progress_callback:
+                    progress_callback(1.0, "背景音乐添加完成")
 
             # 4. 生成封面并插入帧
             cover_path = None
             if config.enable_cover:
+                if progress_callback:
+                    progress_callback(0.0, "正在生成封面")
                 logger.info("开始生成封面...")
                 cover_path = await self._generate_cover(output_path, task, config)
-                
+
                 if cover_path and os.path.exists(cover_path):
+                    if progress_callback:
+                        progress_callback(0.6, "封面生成完成，正在插入视频")
                     logger.info(f"封面生成成功: {cover_path}，开始插入封面帧...")
                     output_path = await self._insert_cover_frames(output_path, cover_path)
+                    if progress_callback:
+                        progress_callback(1.0, "封面插入完成")
                 else:
                     logger.warning("封面生成失败或封面文件不存在，跳过帧插入")
 
@@ -286,16 +287,18 @@ class PostProcessor:
 
             returncode, stdout, stderr = await async_run_subprocess(cmd, check=True)
             data = json.loads(stdout.decode())
-            
+
             video_stream = None
+            audio_stream = None
             for stream in data.get('streams', []):
                 if stream.get('codec_type') == 'video':
                     video_stream = stream
-                    break
-            
+                elif stream.get('codec_type') == 'audio':
+                    audio_stream = stream
+
             if not video_stream:
                 return {}
-            
+
             metadata = {
                 'width': int(video_stream.get('width', 1920)),
                 'height': int(video_stream.get('height', 1080)),
@@ -304,13 +307,18 @@ class PostProcessor:
                 'bit_rate': data.get('format', {}).get('bit_rate'),
                 'codec_name': video_stream.get('codec_name')
             }
-            
+
+            # 添加音频参数（如果存在音频流）
+            if audio_stream:
+                metadata['sample_rate'] = int(audio_stream.get('sample_rate', 44100))
+                metadata['channels'] = int(audio_stream.get('channels', 2))
+
             try:
                 num, den = map(int, metadata['r_frame_rate'].split('/'))
                 metadata['fps'] = num / den if den > 0 else 30.0
             except:
                 metadata['fps'] = 30.0
-            
+
             return metadata
             
         except Exception as e:
@@ -1246,7 +1254,6 @@ class PostProcessor:
                 reference_image_path=reference_path,
                 prompt=cover_prompt,
                 output_path=cover_path,
-                strength=0.5
             )
 
             # 清理参考帧
@@ -1255,6 +1262,15 @@ class PostProcessor:
 
             if generated_cover_path and os.path.exists(generated_cover_path):
                 logger.info(f"封面生成成功：{generated_cover_path}")
+                # 卸载模型释放显存
+                try:
+                    from business.postprocess.local_cover_generator import get_cover_generator
+                    cover_gen = get_cover_generator()
+                    if cover_gen:
+                        cover_gen.unload()
+                        logger.info("封面模型已卸载，显存已释放")
+                except Exception as unload_error:
+                    logger.warning(f"卸载模型失败：{unload_error}")
                 return generated_cover_path
             else:
                 logger.error("本地 AI 封面生成失败")
@@ -1268,28 +1284,41 @@ class PostProcessor:
         """从文案中提取封面总结"""
         import re
         import json
-        
-        script_text = getattr(task, 'script', '')
-        
+
+        # 使用正确的属性名 script_text
+        script_text = getattr(task, 'script_text', '') or getattr(task, 'script', '')
+
+        logger.info(f"提取封面总结 - script_text 长度: {len(script_text) if script_text else 0}")
+        if script_text:
+            logger.info(f"script_text 前 200 字符: {script_text[:200]}...")
+
         if not script_text:
+            logger.warning("script_text 为空，返回默认值 '视频封面'")
             return "视频封面"
-        
+
         try:
             parsed = json.loads(script_text)
             if isinstance(parsed, dict) and "封面总结" in parsed:
-                return str(parsed["封面总结"]).strip()
-        except (json.JSONDecodeError, TypeError):
-            pass
-        
+                result = str(parsed["封面总结"]).strip()
+                logger.info(f"从 JSON 中提取到封面总结: {result}")
+                return result
+        except (json.JSONDecodeError, TypeError) as e:
+            logger.warning(f"JSON 解析失败: {e}")
+
         match = re.search(r'封面总结[：:]\s*(.+?)(?:\n|$)', script_text)
         if match:
-            return match.group(1).strip()
-        
+            result = match.group(1).strip()
+            logger.info(f"通过正则匹配提取到封面总结: {result}")
+            return result
+
         if task.segments and len(task.segments) > 0:
             first_segment = task.segments[0]
             if hasattr(first_segment, 'text') and first_segment.text:
-                return first_segment.text[:50]
-        
+                result = first_segment.text[:50]
+                logger.info(f"从 segments 提取封面总结: {result}")
+                return result
+
+        logger.warning("未能提取封面总结，返回默认值")
         return "视频封面"
 
     def _build_cover_prompt(self, cover_summary: str, config=None) -> str:
@@ -1313,50 +1342,101 @@ class PostProcessor:
                 logger.warning(f"封面图片不存在，跳过帧插入：{cover_path}")
                 return video_path
 
-            # 获取视频分辨率
+            # 获取视频元数据（分辨率、帧率、音频参数）
             video_meta = await self._get_video_metadata(video_path)
             video_width = video_meta.get('width', 1920)
             video_height = video_meta.get('height', 1080)
             video_fps = video_meta.get('fps', 30.0)
-            
-            logger.info(f"视频分辨率：{video_width}x{video_height}, 帧率：{video_fps}fps")
+
+            # 获取原视频的音频参数，确保封面视频的音频与之匹配
+            audio_sample_rate = video_meta.get('sample_rate', 44100)
+            audio_channels = video_meta.get('channels', 2)
+
+            # 根据声道数生成对应的 channel_layout
+            if audio_channels == 1:
+                channel_layout = "mono"
+            elif audio_channels == 2:
+                channel_layout = "stereo"
+            else:
+                channel_layout = "stereo"  # 默认
+
+            logger.info(f"视频分辨率：{video_width}x{video_height}, 帧率：{video_fps}fps, 音频：{audio_sample_rate}Hz/{channel_layout}")
 
             output_path = video_path.replace(".mp4", "_with_cover.mp4")
 
             cover_duration = frame_count / video_fps
 
-            # 修复后的滤镜链：
-            # 1. 将封面图缩放到视频分辨率，并转换为 yuv420p 像素格式
-            # 2. 使用 trim 截取指定时长
-            # 3. 使用 concat 连接到视频开头
-            cmd = [
+            # 修复后的命令：
+            # 使用 -t 控制封面输入时长，避免复杂的 trim 滤镜
+            # 使用 concat 协议（非滤镜）更稳定
+            # 方法：先创建封面视频文件，再用 concat demuxer 合并
+            cover_video_path = video_path.replace(".mp4", "_cover_temp.mp4")
+
+            # 步骤1: 将封面图片转换为短视频（含静音音频轨道，确保 concat 时流结构一致）
+            cmd_cover = [
                 "ffmpeg",
                 "-loop", "1",
                 "-i", cover_path,
-                "-i", video_path,
-                "-filter_complex",
-                f"[0:v]scale={video_width}:{video_height}:force_original_aspect_ratio=decrease,pad={video_width}:{video_height}:(ow-iw)/2:(oh-ih)/2,format=yuv420p[cover_scaled];[cover_scaled]trim=duration={cover_duration}[cover];[cover][1:v]concat=n=2:v=1:a=0[outv]",
-                "-map", "[outv]",
-                "-map", "1:a?",
+                "-f", "lavfi", "-i", f"anullsrc=channel_layout={channel_layout}:sample_rate={audio_sample_rate}",
+                "-t", str(cover_duration),
+                "-vf", f"scale={video_width}:{video_height}:force_original_aspect_ratio=decrease,pad={video_width}:{video_height}:(ow-iw)/2:(oh-ih)/2",
                 "-c:v", "libx264",
                 "-pix_fmt", "yuv420p",
-                "-c:a", "copy",
+                "-r", str(video_fps),
+                "-c:a", "aac",
+                "-b:a", "192k",
+                cover_video_path
+            ]
+
+            logger.info(f"封面转视频命令：{' '.join(cmd_cover)}")
+            stdout = b''
+            stderr = b''
+            try:
+                await async_run_ffmpeg(cmd_cover, check=True)
+                logger.info(f"封面转视频成功：{cover_video_path}")
+            except Exception as e:
+                stderr_text = stderr.decode('utf-8', errors='replace') if stderr else '(无 stderr)'
+                logger.error(f"封面转视频失败：{stderr_text}")
+                return video_path
+
+            # 步骤2: 使用 concat demuxer 合并视频
+            concat_list_path = video_path.replace(".mp4", "_concat.txt")
+            with open(concat_list_path, 'w', encoding='utf-8') as f:
+                f.write(f"file '{cover_video_path}'\n")
+                f.write(f"file '{video_path}'\n")
+
+            cmd_concat = [
+                "ffmpeg",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", concat_list_path,
+                "-c:v", "libx264",
+                "-crf", "18",
+                "-preset", "medium",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-pix_fmt", "yuv420p",
                 output_path
             ]
 
-            logger.info(f"封面帧插入命令：{' '.join(cmd)}")
-            
-            # 执行 FFmpeg 命令，捕获详细错误输出
+            logger.info(f"视频合并命令：{' '.join(cmd_concat)}")
             try:
-                returncode, stdout, stderr = await async_run_ffmpeg(cmd, check=True)
+                returncode, stdout, stderr = await async_run_ffmpeg(cmd_concat, check=True)
                 logger.info(f"封面帧插入成功 (已缩放到{video_width}x{video_height})")
-            except Exception as ffmpeg_error:
-                # 记录详细的 FFmpeg 错误输出
-                stderr_text = stderr.decode() if stderr else ''
-                logger.error(f"FFmpeg 详细错误输出：{stderr_text}")
-                raise ffmpeg_error
+            except Exception as e:
+                stderr_text = stderr.decode('utf-8', errors='replace') if stderr else '(无 stderr)'
+                logger.error(f"视频合并失败：{e}, stderr: {stderr_text}")
+                return video_path
+            finally:
+                # 清理临时文件
+                if os.path.exists(cover_video_path):
+                    os.remove(cover_video_path)
+                if os.path.exists(concat_list_path):
+                    os.remove(concat_list_path)
 
-            os.replace(output_path, video_path)
+            # 替换原视频
+            if os.path.exists(output_path):
+                os.replace(output_path, video_path)
 
             return video_path
 
@@ -1364,101 +1444,6 @@ class PostProcessor:
             logger.error(f"插入封面帧失败：{e}")
             return video_path
     
-    async def _generate_cover_with_qwen(
-        self,
-        video_path: str,
-        task: Task
-    ) -> Optional[str]:
-        """
-        使用 Qwen-Image 生成智能封面
-
-        Args:
-            video_path: 视频路径
-            task: 任务对象
-
-        Returns:
-            封面图片路径
-        """
-        try:
-            # 1. 提取关键帧作为参考图
-            reference_path = video_path.replace(".mp4", "_reference.jpg")
-            cmd = [
-                "ffmpeg",
-                "-i", video_path,
-                "-ss", "00:00:02",
-                "-vframes", "1",
-                "-q:v", "2",
-                reference_path
-            ]
-            await async_run_ffmpeg(cmd, check=True)
-            
-            if not os.path.exists(reference_path):
-                return None
-            
-            # 2. 生成封面 Prompt（基于文案）
-            cover_prompt = self._generate_cover_prompt(task)
-            
-            # 3. 调用 Qwen-Image API
-            output_dir = os.path.join(self.intermediate_dir, "covers")
-            cover_path = self.qwen_client.generate_image_from_reference(
-                prompt=cover_prompt,
-                reference_image_path=reference_path,
-                strength=0.5,
-                output_dir=output_dir
-            )
-            
-            # 清理参考图
-            if os.path.exists(reference_path):
-                os.remove(reference_path)
-            
-            return cover_path
-            
-        except Exception as e:
-            logger.error(f"Qwen-Image 封面生成失败：{e}")
-            return None
-    
-    async def _generate_cover_simple(self, video_path: str) -> Optional[str]:
-        """简单封面生成（提取中间帧）"""
-        try:
-            cover_path = video_path.replace(".mp4", "_cover.jpg")
-
-            cmd = [
-                "ffmpeg",
-                "-i", video_path,
-                "-ss", "00:00:02",
-                "-vframes", "1",
-                "-q:v", "2",
-                cover_path
-            ]
-
-            await async_run_ffmpeg(cmd, check=True)
-
-            return cover_path if os.path.exists(cover_path) else None
-            
-        except Exception as e:
-            logger.error(f"生成封面失败：{e}")
-            return None
-    
-    def _generate_cover_prompt(self, task: Task) -> str:
-        """
-        生成封面提示词
-
-        Args:
-            task: 任务对象
-
-        Returns:
-            封面提示词
-        """
-        # 基于文案内容生成简单的提示词
-        texts = [seg.text for seg in task.segments if seg.text]
-        main_text = " ".join(texts[:3]) if texts else "数字人视频"
-
-        # 构建提示词
-        prompt = f"高质量封面，专业摄影，{main_text}，清晰人脸，电影级别光效，4K 高清"
-
-        logger.debug(f"封面提示词：{prompt}")
-        return prompt
-
     def _should_use_precise_subtitle(self) -> bool:
         """
         判断是否应该使用精准字幕
@@ -1656,17 +1641,15 @@ class PostProcessor:
 def create_post_processor(
     intermediate_dir: str = "backend/output",
     output_dir: str = "output",
-    qwen_api_key: Optional[str] = None
+    **kwargs
 ) -> PostProcessor:
     """创建后期处理器的便捷函数
 
     Args:
         intermediate_dir: 中间处理目录（字幕、BGM、合并等中间文件存放处）
         output_dir: 最终输出目录（只有完成全部后期处理的视频才存放此处）
-        qwen_api_key: Qwen-Image API 密钥
     """
     return PostProcessor(
         intermediate_dir=intermediate_dir,
-        output_dir=output_dir,
-        qwen_api_key=qwen_api_key
+        output_dir=output_dir
     )

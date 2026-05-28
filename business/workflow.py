@@ -142,7 +142,6 @@ class DigitalHumanWorkflow:
         heygem_engine=None,
         llm_config: Optional[Dict] = None,
         output_dir: str = "output",
-        qwen_api_key: Optional[str] = None,
         low_memory_mode: bool = False
     ):
         """
@@ -153,13 +152,11 @@ class DigitalHumanWorkflow:
             heygem_engine: HeyGemEngine 实例
             llm_config: LLM 配置
             output_dir: 输出目录（已废弃，使用路径管理器）
-            qwen_api_key: Qwen-Image API 密钥（用于封面生成）
             low_memory_mode: 是否启用低显存模式（开启时阶段完成后卸载模型）
         """
         self.tts_engine = tts_engine
         self.heygem_engine = heygem_engine
         self.llm_config = llm_config or {}
-        self.qwen_api_key = qwen_api_key
         self.low_memory_mode = low_memory_mode
 
         # 初始化路径管理器
@@ -190,8 +187,7 @@ class DigitalHumanWorkflow:
         )
         self.post_processor = create_post_processor(
             intermediate_dir=self.output_dir,
-            output_dir=self.final_output_dir,
-            qwen_api_key=self.qwen_api_key
+            output_dir=self.final_output_dir
         )
 
         self.resource_monitor = get_monitor()
@@ -455,7 +451,17 @@ class DigitalHumanWorkflow:
                     use_llm=use_llm_generate,
                     config=config
                 )
+                # 返回值是 (segments, raw_script) 元组
+                if isinstance(segments, tuple):
+                    segments, raw_script = segments
+                else:
+                    raw_script = script_text
                 task.segments = segments
+                # 保存原始文案文本到 task.script_text，用于封面生成等后续功能
+                if raw_script:
+                    task.script_text = raw_script
+                elif script_text:
+                    task.script_text = script_text
                 task.progress = 10
                 if progress_callback:
                     progress_callback(10, "文案生成完成")
@@ -773,11 +779,15 @@ class DigitalHumanWorkflow:
                 """后期处理进度回调"""
                 if progress_callback:
                     # 将 85-100% 的进度映射到后期处理的子阶段
-                    # 封面生成：87-92%，插入封面：92-97%，完成：97-100%
-                    if "封面" in stage:
-                        progress_callback(87 + (progress * 0.05), stage)
-                    elif "合成" in stage:
-                        progress_callback(92 + (progress * 0.05), stage)
+                    # 字幕：85-87%，BGM：87-89%，封面生成：89-94%，插入封面：94-97%，完成：97-100%
+                    if "字幕" in stage:
+                        progress_callback(85 + (progress * 0.02), stage)
+                    elif "背景音乐" in stage or "BGM" in stage:
+                        progress_callback(87 + (progress * 0.02), stage)
+                    elif "封面" in stage:
+                        progress_callback(89 + (progress * 0.05), stage)
+                    elif "合成" in stage or "插入" in stage:
+                        progress_callback(94 + (progress * 0.03), stage)
                     else:
                         progress_callback(85 + (progress * 0.15), stage)
 
@@ -1136,24 +1146,29 @@ class DigitalHumanWorkflow:
         topic: str,
         use_llm: bool,
         config: Optional[TaskConfig] = None
-    ) -> List[ScriptSegment]:
+    ) -> tuple:
         """生成文案
-        
+
         支持两种模式：
         1. JSON 格式文案：直接解析
         2. 非 JSON 格式主题：调用 LLM 生成文案（当 use_llm=True 时）
+
+        Returns:
+            (segments, raw_script) 元组
+            - segments: 解析后的文案段落列表
+            - raw_script: 原始 JSON 文案文本，用于封面生成等功能
         """
         logger.info(f"开始处理文案: script_text长度={len(script_text) if script_text else 0}, use_llm={use_llm}, topic={topic[:50] if topic else 'N/A'}...")
-        
+
         if script_text:
             logger.info("尝试解析提供的文案")
             segments = self.script_parser.parse(script_text)
             if segments:
                 logger.info(f"文案解析完成，段落数: {len(segments)}")
-                return segments
+                return segments, script_text
             else:
                 logger.warning("文案解析失败")
-        
+
         if use_llm and topic:
             logger.info(f"调用 LLM 生成文案，主题: {topic[:50]}...")
             try:
@@ -1162,20 +1177,20 @@ class DigitalHumanWorkflow:
                     segments = self.script_parser.parse(generated_script)
                     if segments:
                         logger.info(f"LLM 文案生成完成，段落数: {len(segments)}")
-                        return segments
+                        return segments, generated_script
                     else:
                         logger.warning("LLM 生成的文案解析失败")
             except Exception as e:
                 logger.error(f"LLM 文案生成失败: {e}")
-        
+
         logger.warning("使用默认文案")
         segments = self.script_parser._get_default_segments()
-        
+
         if config and config.enable_double_mode:
             for i, segment in enumerate(segments):
                 segment.speaker = "left" if i % 2 == 0 else "right"
-        
-        return segments
+
+        return segments, None
     
     def _generate_script_with_llm(
         self,
@@ -1704,7 +1719,6 @@ def create_workflow(
     llm_provider: str = "astron",
     llm_api_key: str = "",
     output_dir: str = "output",
-    qwen_api_key: Optional[str] = None,
     low_memory_mode: bool = False,
     ultra_low_memory: bool = False
 ) -> DigitalHumanWorkflow:
@@ -1716,7 +1730,6 @@ def create_workflow(
         llm_provider: LLM 提供商
         llm_api_key: LLM API 密钥
         output_dir: 输出目录
-        qwen_api_key: Qwen API 密钥
         low_memory_mode: 是否启用低显存模式
         ultra_low_memory: 是否启用超低显存模式
 
@@ -1740,7 +1753,6 @@ def create_workflow(
             "api_key": llm_api_key
         },
         output_dir=output_dir,
-        qwen_api_key=qwen_api_key,
         low_memory_mode=low_memory_mode
     )
 

@@ -190,7 +190,6 @@ class WorkflowService:
         heygem_engine=None,
         llm_provider: str = "astron",
         llm_api_key: str = "",
-        aliyun_api_key: str = "",
         output_dir: str = "output",
         max_concurrent_tasks: int = 3,
         low_memory_mode: bool = False
@@ -203,7 +202,6 @@ class WorkflowService:
             heygem_engine: HeyGemEngine 实例
             llm_provider: LLM 提供商
             llm_api_key: LLM API 密钥
-            aliyun_api_key: 阿里云 API 密钥（用于封面生成）
             output_dir: 输出目录
             max_concurrent_tasks: 最大并发任务数
             low_memory_mode: 是否启用低显存模式（任务完成后卸载模型）
@@ -212,7 +210,6 @@ class WorkflowService:
         self.heygem_engine = heygem_engine
         self.llm_provider = llm_provider
         self.llm_api_key = llm_api_key
-        self.aliyun_api_key = aliyun_api_key
         self.output_dir = output_dir
         self.low_memory_mode = low_memory_mode
 
@@ -282,7 +279,6 @@ class WorkflowService:
             llm_provider=self.llm_provider,
             llm_api_key=self.llm_api_key,
             output_dir=self.output_dir,
-            qwen_api_key=self.aliyun_api_key,
             low_memory_mode=self.low_memory_mode
         )
         if self._db:
@@ -2374,8 +2370,6 @@ async def init_workflow_service(
     if llm_api_key is None:
         llm_api_key = api_config.get("deepseek_api_key", "")
 
-    aliyun_api_key = api_config.get("aliyun_api_key", "")
-
     # 读取低显存模式配置
     if low_memory_mode is None:
         try:
@@ -2408,7 +2402,6 @@ async def init_workflow_service(
         heygem_engine=heygem_engine,
         llm_provider=llm_provider,
         llm_api_key=llm_api_key,
-        aliyun_api_key=aliyun_api_key,
         output_dir=output_dir,
         max_concurrent_tasks=max_concurrent_tasks,
         low_memory_mode=low_memory_mode

@@ -107,9 +107,19 @@
             </div>
             
             <div class="card-actions">
-              <el-button 
-                type="primary" 
-                size="small" 
+              <el-button
+                type="warning"
+                size="small"
+                plain
+                @click.stop="openAudioClipDialog(item)"
+                title="剪辑音频"
+              >
+                <el-icon><Scissor /></el-icon>
+                剪辑
+              </el-button>
+              <el-button
+                type="primary"
+                size="small"
                 plain
                 @click.stop="editItem(item)"
                 title="编辑音频"
@@ -117,9 +127,9 @@
                 <el-icon><Edit /></el-icon>
                 编辑
               </el-button>
-              <el-button 
-                type="danger" 
-                size="small" 
+              <el-button
+                type="danger"
+                size="small"
                 @click.stop="deleteItem(item)"
                 title="删除音频"
               >
@@ -225,14 +235,15 @@
                 <input type="file" ref="openingInput" accept="video/*" style="display:none" @change="handleVideoUpload($event, 'opening')" />
               </div>
               <div class="video-preview" v-if="createForm.opening_video">
-                <video :src="getFileUrl(createForm.opening_video)" controls />
+                <div class="video-preview-with-actions">
+                  <video :src="getFileUrl(createForm.opening_video, createForm.opening_video_ts)" controls style="object-fit:contain" />
+                  <div class="video-clip-action">
+                    <el-button type="warning" size="small" @click="openClipDialog('opening', {path: createForm.opening_video, name: '开场视频'}, 'video')">
+                      <el-icon><Scissor /></el-icon> 剪辑
+                    </el-button>
+                  </div>
+                </div>
                 <div class="video-actions">
-                  <MediaClipper
-                    :file-path="createForm.opening_video"
-                    media-type="video"
-                    :is-dark-theme="isDarkTheme"
-                    @clipped="handleVideoClipped"
-                  />
                   <el-button size="small" @click="analyzeFace(createForm.opening_video, 'opening')" :loading="faceAnalysisLoading[createForm.opening_video] && faceAnalysisLoading[createForm.opening_video] !== 'completed'" :disabled="(faceAnalysisLoading[createForm.opening_video] && faceAnalysisLoading[createForm.opening_video] !== 'completed') || analyzedVideoPaths[createForm.opening_video]">
                     <el-icon><Monitor /></el-icon> {{ faceAnalysisLoading[createForm.opening_video] === 'completed' ? '已完成' : (faceAnalysisLoading[createForm.opening_video] || analyzedVideoPaths[createForm.opening_video] ? '分析中...' : '面部分析') }}
                   </el-button>
@@ -257,7 +268,14 @@
               </div>
               <div class="video-list">
                 <div v-for="(video, index) in createForm.loop_videos" :key="index" class="video-item">
-                  <video :src="getFileUrl(video.path)" controls />
+                  <div class="video-preview-with-actions">
+                    <video :src="getFileUrl(video.path, video.timestamp)" controls style="object-fit:contain" />
+                    <div class="video-clip-action">
+                      <el-button type="warning" size="small" @click="openClipDialog('loop', video, 'video')">
+                        <el-icon><Scissor /></el-icon> 剪辑
+                      </el-button>
+                    </div>
+                  </div>
                   <div class="video-info">
                     <el-select v-model="video.emotion" placeholder="选择情绪标签" size="small" class="emotion-select">
                       <el-option label="开心" value="happy" />
@@ -271,12 +289,6 @@
                     </el-select>
                   </div>
                   <div class="video-actions">
-                    <MediaClipper
-                      :file-path="video.path"
-                      media-type="video"
-                      :is-dark-theme="isDarkTheme"
-                      @clipped="handleVideoClipped"
-                    />
                     <el-button size="small" @click="analyzeFace(video.path, 'loop')" :loading="faceAnalysisLoading[video.path] && faceAnalysisLoading[video.path] !== 'completed'" :disabled="(faceAnalysisLoading[video.path] && faceAnalysisLoading[video.path] !== 'completed') || analyzedVideoPaths[video.path]">
                       <el-icon><Monitor /></el-icon> {{ faceAnalysisLoading[video.path] === 'completed' ? '已完成' : (faceAnalysisLoading[video.path] || analyzedVideoPaths[video.path] ? '分析中...' : '面部分析') }}
                     </el-button>
@@ -297,14 +309,15 @@
                 <input type="file" ref="endingInput" accept="video/*" style="display:none" @change="handleVideoUpload($event, 'ending')" />
               </div>
               <div class="video-preview" v-if="createForm.ending_video">
-                <video :src="getFileUrl(createForm.ending_video)" controls />
+                <div class="video-preview-with-actions">
+                  <video :src="getFileUrl(createForm.ending_video, createForm.ending_video_ts)" controls style="object-fit:contain" />
+                  <div class="video-clip-action">
+                    <el-button type="warning" size="small" @click="openClipDialog('ending', {path: createForm.ending_video, name: '结束视频'}, 'video')">
+                      <el-icon><Scissor /></el-icon> 剪辑
+                    </el-button>
+                  </div>
+                </div>
                 <div class="video-actions">
-                  <MediaClipper
-                    :file-path="createForm.ending_video"
-                    media-type="video"
-                    :is-dark-theme="isDarkTheme"
-                    @clipped="handleVideoClipped"
-                  />
                   <el-button size="small" @click="analyzeFace(createForm.ending_video, 'ending')" :loading="faceAnalysisLoading[createForm.ending_video] && faceAnalysisLoading[createForm.ending_video] !== 'completed'" :disabled="(faceAnalysisLoading[createForm.ending_video] && faceAnalysisLoading[createForm.ending_video] !== 'completed') || analyzedVideoPaths[createForm.ending_video]">
                     <el-icon><Monitor /></el-icon> {{ faceAnalysisLoading[createForm.ending_video] === 'completed' ? '已完成' : (faceAnalysisLoading[createForm.ending_video] || analyzedVideoPaths[createForm.ending_video] ? '分析中...' : '面部分析') }}
                   </el-button>
@@ -398,7 +411,14 @@
               </div>
               <div class="video-list">
                 <div v-for="(video, index) in createForm.scene_videos" :key="index" class="video-item scene">
-                  <video :src="getFileUrl(video.path)" controls />
+                  <div class="video-preview-with-actions">
+                    <video :src="getFileUrl(video.path, video.timestamp)" controls style="object-fit:contain" />
+                    <div class="video-clip-action">
+                      <el-button type="warning" size="small" @click="openClipDialog('scene', video, 'video')">
+                        <el-icon><Scissor /></el-icon> 剪辑
+                      </el-button>
+                    </div>
+                  </div>
                   <div class="video-info">
                     <el-select v-model="video.tag" placeholder="选择场景标签" size="small" class="scene-select">
                       <el-option
@@ -410,12 +430,6 @@
                     </el-select>
                   </div>
                   <div class="video-actions">
-                    <MediaClipper
-                      :file-path="video.path"
-                      media-type="video"
-                      :is-dark-theme="isDarkTheme"
-                      @clipped="handleVideoClipped"
-                    />
                     <el-button size="small" type="danger" @click="removeSceneVideo(index)">
                       <el-icon><Delete /></el-icon>
                     </el-button>
@@ -495,10 +509,19 @@
                     </div>
                   </div>
                   <div class="audio-actions">
-                    <el-button 
-                      v-if="audio.status === 'completed' && !audio.denoise" 
-                      size="small" 
-                      type="primary" 
+                    <el-button
+                      v-if="audio.status === 'completed' && audio.path"
+                      size="small"
+                      type="warning"
+                      @click="openAudioClipDialog(audio)"
+                      title="剪辑"
+                    >
+                      <el-icon><Scissor /></el-icon>
+                    </el-button>
+                    <el-button
+                      v-if="audio.status === 'completed' && !audio.denoise"
+                      size="small"
+                      type="primary"
                       @click="denoiseAudioClip(index)"
                       :loading="audio.denoising"
                       :disabled="audio.denoising"
@@ -548,6 +571,9 @@
                 </div>
                 <div class="video-actions">
                   <span style="margin-right: auto;">{{ createForm.bgm_name }}</span>
+                  <el-button size="small" type="warning" @click="openBgmClipDialog()" title="剪辑">
+                    <el-icon><Scissor /></el-icon>
+                  </el-button>
                   <el-button size="small" type="danger" @click="removeBgm">
                     <el-icon><Delete /></el-icon>
                   </el-button>
@@ -578,22 +604,21 @@
     >
       <div class="preview-container">
         <template v-if="currentTab === 'role' || currentTab === 'scene'">
-          <div class="video-preview-wrapper">
-            <video
-              v-if="previewVideoPath"
-              :src="getFileUrl(previewVideoPath)"
-              controls
-              autoplay
-              muted
-              class="preview-video"
-            />
-            <div v-if="previewVideoPath" class="preview-actions">
-              <MediaClipper
-                :file-path="previewVideoPath"
-                media-type="video"
-                :is-dark-theme="isDarkTheme"
-                @clipped="handlePreviewVideoClipped"
+          <div class="video-preview-wrapper" v-if="previewVideoPath">
+            <div class="video-preview-with-actions">
+              <video
+                :src="getFileUrl(previewVideoPath, previewVideoTs)"
+                controls
+                autoplay
+                muted
+                class="preview-video"
+                style="object-fit:contain"
               />
+              <div class="video-clip-action">
+                <el-button type="warning" size="small" @click="openClipDialog('preview', {path: previewVideoPath, name: previewItemData?.name || '预览视频'}, 'video')">
+                  <el-icon><Scissor /></el-icon> 剪辑
+                </el-button>
+              </div>
             </div>
           </div>
           <div v-else class="preview-empty">
@@ -602,12 +627,18 @@
           </div>
         </template>
         <template v-else-if="currentTab === 'audio' || currentTab === 'bgm'">
-          <audio
-            v-if="previewItemData && previewItemData.path"
-            :src="getFileUrl(previewItemData.path)"
-            controls
-            autoplay
-          />
+          <div class="audio-preview-with-actions" v-if="previewItemData && previewItemData.path">
+            <audio
+              :src="getFileUrl(previewItemData.path, previewItemData.timestamp)"
+              controls
+              autoplay
+            />
+            <div class="audio-clip-action">
+              <el-button type="warning" size="small" @click="openClipDialog('preview', previewItemData, 'audio')">
+                <el-icon><Scissor /></el-icon> 剪辑
+              </el-button>
+            </div>
+          </div>
           <div v-else class="preview-empty">
             <el-icon><Headset /></el-icon>
             <span>暂无音频素材</span>
@@ -616,16 +647,82 @@
       </div>
     </el-dialog>
 
+    <!-- 音频剪辑对话框 -->
+    <el-dialog
+      v-model="showAudioClipDialog"
+      title="音频剪辑"
+      width="800px"
+      :class="['audio-clip-dialog', { 'dark-theme': isDarkTheme }]"
+      :close-on-click-modal="false"
+    >
+      <div class="audio-clip-container">
+        <div v-if="audioClipItem" class="audio-clip-content">
+          <!-- 音频信息 -->
+          <div class="audio-info-header">
+            <h4>{{ audioClipItem.name || audioClipItem.bgm_name }}</h4>
+            <span class="audio-duration">时长: {{ formatDuration(audioClipItem.duration) }}</span>
+          </div>
+
+          <!-- 剪辑器（自带播放器） -->
+          <MediaClipper
+            v-if="audioClipItem.path"
+            :file-path="audioClipItem.path"
+            media-type="audio"
+            :is-dark-theme="isDarkTheme"
+            default-mode="trim"
+            @clipped="handleAudioClipped"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showAudioClipDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 媒体剪辑对话框（视频/音频通用） -->
+    <el-dialog
+      v-model="showClipDialog"
+      :title="clipMediaType === 'video' ? '视频剪辑' : '音频剪辑'"
+      width="900px"
+      :class="['media-clip-dialog', { 'dark-theme': isDarkTheme }]"
+      :close-on-click-modal="false"
+    >
+      <div class="media-clip-container">
+        <div v-if="clipItem" class="media-clip-content">
+          <!-- 媒体信息 -->
+          <div class="media-info-header">
+            <h4>{{ clipItem.name }}</h4>
+            <span class="media-type-label">{{ clipMediaType === 'video' ? '视频' : '音频' }}</span>
+          </div>
+
+          <!-- 剪辑器（自带播放器） -->
+          <MediaClipper
+            v-if="clipItem.path"
+            :file-path="clipItem.path"
+            :media-type="clipMediaType"
+            :is-dark-theme="isDarkTheme"
+            default-mode="trim"
+            @clipped="handleMediaClipped"
+            @cropped="handleMediaCropped"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showClipDialog = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <a href="https://deerflow.tech" target="_blank" class="deerflow-badge">✦ Deerflow</a>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted, onUnmounted, watch, inject } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted, watch, nextTick, inject } from 'vue'
 import { useRoute } from 'vue-router'
 import { materialApi, mediaClipApi } from '@/services/api'
 import { uploadAPI } from '@/api/upload'
 import { ElMessage } from 'element-plus'
+import { Scissor } from '@element-plus/icons-vue'
 import { useTagStore } from '@/stores/tagStore'
 import MediaClipper from '@/components/MediaClipper.vue'
 
@@ -678,12 +775,19 @@ const setupThemeListener = () => {
 const currentTab = ref('role')
 const showCreateDialog = ref(false)
 const showPreviewDialog = ref(false)
+const showAudioClipDialog = ref(false)  // 音频剪辑对话框
+const showClipDialog = ref(false)  // 视频剪辑对话框
 const isEditing = ref(false)
 const submitting = ref(false)
 const formRef = ref(null)
 const previewItemData = ref(null)
 const previewVideoPath = ref('')
+const previewVideoTs = ref(null)
 const previewVideoLabel = ref('')
+const audioClipItem = ref(null)  // 正在剪辑的音频项
+const audioClipPlayerRef = ref(null)  // 音频剪辑播放器引用
+const clipItem = ref(null)  // 视频剪辑项
+const clipMediaType = ref('video')  // 剪辑媒体类型
 
 // 搜索和筛选
 const searchQuery = ref('')
@@ -1685,23 +1789,141 @@ const handleDoubleModeChange = (value) => {
 }
 
 // 视频剪辑处理函数
-const handleVideoClipped = (data) => {
-  // data: { filePath, startTime, endTime, duration }
-  console.log('视频剪辑完成:', data)
-  // 添加时间戳强制刷新视频预览
-  if (data.filePath === createForm.opening_video) {
-    // 开场视频已原地替换，不需要更新路径
+const handleVideoClipped = (type, data) => {
+  console.log('视频剪辑完成:', type, data)
+  const ts = Date.now()
+  if (type === 'opening' && createForm.opening_video) {
+    createForm.opening_video_ts = ts
+  } else if (type === 'ending' && createForm.ending_video) {
+    createForm.ending_video_ts = ts
+  } else if (type === 'loop' || type === 'scene') {
+    loadMaterials()
   }
-  // 视频已原地替换，不需要更新路径，浏览器会通过缓存控制自动刷新
+  ElMessage.success('剪辑成功')
+}
+
+// 视频画面裁剪处理函数
+const handleVideoCropped = (type, data) => {
+  handleVideoClipped(type, data)
 }
 
 // 预览对话框中的视频剪辑处理函数
 const handlePreviewVideoClipped = (data) => {
   console.log('预览对话框 - 视频剪辑完成:', data)
-  // 视频已原地替换，刷新预览对话框
-  // 添加时间戳强制刷新视频预览
   previewVideoPath.value = data.filePath + '?t=' + Date.now()
   ElMessage.success('剪辑完成，视频已更新')
+}
+
+// 预览对话框中的视频裁剪处理函数
+const handlePreviewVideoCropped = (data) => {
+  handlePreviewVideoClipped(data)
+}
+
+// 预览对话框中的音频剪辑处理函数
+const handlePreviewAudioClipped = (data) => {
+  console.log('预览对话框 - 音频剪辑完成:', data)
+  ElMessage.success('剪辑完成')
+  loadMaterials()
+}
+
+// 打开音频剪辑对话框
+const openAudioClipDialog = (item) => {
+  audioClipItem.value = item
+  showAudioClipDialog.value = true
+  // 停止悬停播放
+  handleHoverStop(item)
+}
+
+// 打开BGM剪辑对话框
+const openBgmClipDialog = () => {
+  if (!createForm.bgm_path) {
+    ElMessage.warning('请先上传BGM文件')
+    return
+  }
+  audioClipItem.value = { path: createForm.bgm_path, name: createForm.bgm_name }
+  showAudioClipDialog.value = true
+}
+
+// 音频剪辑完成处理
+const handleAudioClipped = (data) => {
+  const ts = Date.now()
+
+  // 检查是否是BGM剪辑
+  if (audioClipItem.value?.path === createForm.bgm_path) {
+    bgmTimestamp.value = ts
+  }
+
+  // 检查是否是createForm中的音频片段
+  if (createForm.audio_clips) {
+    const clipIndex = createForm.audio_clips.findIndex(c => c.path === audioClipItem.value?.path)
+    if (clipIndex !== -1) {
+      createForm.audio_clips[clipIndex] = { ...createForm.audio_clips[clipIndex], timestamp: ts }
+    }
+  }
+
+  // 刷新素材列表
+  loadMaterials()
+
+  // 关闭剪辑对话框
+  showAudioClipDialog.value = false
+  audioClipItem.value = null
+
+  // 强制音频元素重新加载
+  nextTick(() => {
+    document.querySelectorAll('.audio-upload-section audio, .video-section audio').forEach(el => {
+      if (el.src) el.load()
+    })
+  })
+}
+
+// 打开通用剪辑对话框
+const openClipDialog = (type, item, mediaType) => {
+  clipItem.value = { ...item, type }
+  clipMediaType.value = mediaType
+  showClipDialog.value = true
+  // 如果是预览项，停止悬停播放
+  if (type === 'preview' && previewItemData.value) {
+    handleHoverStop(previewItemData.value)
+  }
+}
+
+// 通用剪辑完成处理
+const handleMediaClipped = (data) => {
+  console.log('媒体剪辑完成:', data)
+  const type = clipItem.value?.type
+  const ts = Date.now()
+
+  if (type === 'opening' && createForm.opening_video) {
+    createForm.opening_video_ts = ts
+  } else if (type === 'ending' && createForm.ending_video) {
+    createForm.ending_video_ts = ts
+  } else if (type === 'loop' || type === 'scene') {
+    loadMaterials()
+  } else if (type === 'preview') {
+    if (clipMediaType.value === 'video' && previewVideoPath.value) {
+      previewVideoPath.value = data.filePath
+      previewVideoTs.value = ts
+    } else if (clipMediaType.value === 'audio' && previewItemData.value) {
+      previewItemData.value = { ...previewItemData.value, path: data.filePath, timestamp: ts }
+    }
+    loadMaterials()
+  }
+
+  ElMessage.success('剪辑完成')
+  showClipDialog.value = false
+  clipItem.value = null
+
+  // 强制刷新所有视频/音频元素以破坏浏览器缓存
+  nextTick(() => {
+    document.querySelectorAll('.media-clip-dialog video, .media-clip-dialog audio').forEach(el => {
+      if (el.src) el.load()
+    })
+  })
+}
+
+// 通用裁剪完成处理
+const handleMediaCropped = (data) => {
+  handleMediaClipped(data)
 }
 
 const validateDoubleModeAudio = () => {
@@ -2878,15 +3100,16 @@ onUnmounted(() => {
 
   .preview-actions {
     position: absolute;
-    bottom: 60px;
-    right: 10px;
-    z-index: 10;
-    background: rgba(0, 0, 0, 0.6);
+    bottom: 70px;
+    right: 15px;
+    z-index: 100;
+    background: rgba(0, 0, 0, 0.75);
     border-radius: 8px;
-    padding: 8px;
+    padding: 10px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
 
     &:hover {
-      background: rgba(0, 0, 0, 0.8);
+      background: rgba(0, 0, 0, 0.9);
     }
   }
 }
@@ -3119,5 +3342,293 @@ onUnmounted(() => {
 .audio-card .card-actions .el-button {
   padding: 6px 12px;
   width: auto;
+}
+
+/* 音频剪辑对话框样式 */
+.audio-clip-dialog :deep(.el-dialog) {
+  background: #1a1f26;
+  border-radius: 16px;
+}
+
+.audio-clip-container {
+  padding: 20px;
+}
+
+.audio-clip-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.audio-info-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.audio-info-header h4 {
+  margin: 0;
+  color: #fff;
+  font-size: 16px;
+}
+
+.audio-info-header .audio-duration {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+}
+
+.audio-preview-player {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 15px;
+}
+
+.audio-player {
+  width: 100%;
+  height: 40px;
+  border-radius: 4px;
+}
+
+.audio-clip-dialog.dark-theme :deep(.el-dialog) {
+  background: #0d1117;
+}
+
+.audio-clip-dialog.dark-theme .audio-info-header h4 {
+  color: #e6edf3;
+}
+
+.audio-clip-dialog.dark-theme .audio-info-header .audio-duration {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.audio-clip-dialog.dark-theme .audio-preview-player {
+  background: rgba(255, 255, 255, 0.05);
+}
+/* ==================== 媒体剪辑对话框样式 ==================== */
+.media-clip-dialog {
+  :deep(.el-dialog) {
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  :deep(.el-dialog__header) {
+    padding: 20px 24px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  :deep(.el-dialog__title) {
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  :deep(.el-dialog__body) {
+    padding: 0;
+    overflow-y: auto;
+    max-height: 70vh;
+  }
+}
+
+.media-clip-container {
+  padding: 24px;
+}
+
+.media-clip-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.media-info-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+
+  h4 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 500;
+    color: #1f2937;
+  }
+
+  .media-type-label {
+    padding: 4px 12px;
+    background: #f3f4f6;
+    border-radius: 9999px;
+    font-size: 12px;
+    color: #6b7280;
+  }
+}
+
+.media-preview-player {
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+
+  .video-player {
+    width: 100%;
+    max-height: 500px;
+    object-fit: contain;
+  }
+
+  .audio-player {
+    width: 100%;
+    padding: 20px;
+  }
+}
+
+.dark-theme {
+  .media-clip-dialog {
+    :deep(.el-dialog) {
+      background: #1e1e1e;
+      border: 1px solid #374151;
+    }
+
+    :deep(.el-dialog__header) {
+      border-bottom-color: #374151;
+    }
+
+    :deep(.el-dialog__title) {
+      color: #f3f4f6;
+    }
+
+    :deep(.el-dialog__body) {
+      background: #1e1e1e;
+    }
+  }
+
+  .media-info-header {
+    border-bottom-color: #374151;
+
+    h4 {
+      color: #f3f4f6;
+    }
+
+    .media-type-label {
+      background: #374151;
+      color: #9ca3af;
+    }
+  }
+
+  .media-preview-player {
+    background: #000;
+  }
+}
+
+/* 视频预览带操作栏 */
+.video-preview-with-actions {
+  position: relative;
+
+  .video-clip-action {
+    position: absolute;
+    bottom: 40px;
+    right: 8px;
+    z-index: 100;
+  }
+}
+
+/* 音频预览带操作栏 */
+.audio-preview-with-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  .audio-clip-action {
+    flex-shrink: 0;
+  }
+}
+
+/* ==================== 媒体剪辑对话框样式 ==================== */
+.media-clip-dialog {
+  :deep(.el-dialog) {
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  :deep(.el-dialog__header) {
+    padding: 20px 24px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  :deep(.el-dialog__title) {
+    font-size: 18px;
+    font-weight: 600;
+  }
+
+  :deep(.el-dialog__body) {
+    padding: 0;
+    overflow-y: auto;
+    max-height: 70vh;
+  }
+}
+
+.media-clip-container {
+  padding: 24px;
+}
+
+.media-clip-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.media-info-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+
+  h4 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 500;
+    color: #1f2937;
+  }
+
+  .media-type-label {
+    padding: 4px 12px;
+    background: #f3f4f6;
+    border-radius: 9999px;
+    font-size: 12px;
+    color: #6b7280;
+  }
+}
+
+.dark-theme {
+  .media-clip-dialog {
+    :deep(.el-dialog) {
+      background: #1e1e1e;
+      border: 1px solid #374151;
+    }
+
+    :deep(.el-dialog__header) {
+      border-bottom-color: #374151;
+    }
+
+    :deep(.el-dialog__title) {
+      color: #f3f4f6;
+    }
+
+    :deep(.el-dialog__body) {
+      background: #1e1e1e;
+    }
+  }
+
+  .media-info-header {
+    border-bottom-color: #374151;
+
+    h4 {
+      color: #f3f4f6;
+    }
+
+    .media-type-label {
+      background: #374151;
+      color: #9ca3af;
+    }
+  }
 }
 </style>
