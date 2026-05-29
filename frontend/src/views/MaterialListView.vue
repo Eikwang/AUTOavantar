@@ -1864,14 +1864,33 @@ const handleAudioClipped = (data) => {
   // 刷新素材列表
   loadMaterials()
 
+  // 强制刷新音频播放器引用，添加时间戳防止缓存
+  if (audioClipPlayerRef.value) {
+    const audioEl = audioClipPlayerRef.value.$el?.querySelector?.('audio') ||
+                     audioClipPlayerRef.value.$el
+    if (audioEl) {
+      // 更新 src 添加时间戳
+      const currentSrc = audioEl.src
+      if (currentSrc) {
+        const separator = currentSrc.includes('?') ? '&' : '?'
+        audioEl.src = currentSrc + separator + 't=' + ts
+        audioEl.load()
+      }
+    }
+  }
+
   // 关闭剪辑对话框
   showAudioClipDialog.value = false
   audioClipItem.value = null
 
-  // 强制音频元素重新加载
+  // 强制页面所有音频元素重新加载
   nextTick(() => {
     document.querySelectorAll('.audio-upload-section audio, .video-section audio').forEach(el => {
-      if (el.src) el.load()
+      if (el.src) {
+        const separator = el.src.includes('?') ? '&' : '?'
+        el.src = el.src + separator + 't=' + ts
+        el.load()
+      }
     })
   })
 }
@@ -1892,12 +1911,22 @@ const handleMediaClipped = (data) => {
   console.log('媒体剪辑完成:', data)
   const type = clipItem.value?.type
   const ts = Date.now()
+  const clipPath = clipItem.value?.path
 
+  // 根据素材类型更新对应的时间戳
   if (type === 'opening' && createForm.opening_video) {
     createForm.opening_video_ts = ts
   } else if (type === 'ending' && createForm.ending_video) {
     createForm.ending_video_ts = ts
   } else if (type === 'loop' || type === 'scene') {
+    // 找到被剪辑的视频并更新其 timestamp
+    const videos = type === 'loop' ? createForm.loop_videos : createForm.scene_videos
+    if (videos && clipPath) {
+      const idx = videos.findIndex(v => v.path === clipPath)
+      if (idx !== -1) {
+        videos[idx] = { ...videos[idx], timestamp: ts }
+      }
+    }
     loadMaterials()
   } else if (type === 'preview') {
     if (clipMediaType.value === 'video' && previewVideoPath.value) {
@@ -2335,13 +2364,13 @@ onUnmounted(() => {
 <style scoped>
 .material-library-container {
   min-height: calc(100vh - 64px - 40px);
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 50%, #eef2f6 100%);
+  background: linear-gradient(135deg, var(--bg-page) 0%, #e8ecf1 50%, #eef2f6 100%);
   transition: background 0.3s ease;
 }
 
 /* 暗色主题 */
 .material-library-container.dark-theme {
-  background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #1a1f26 100%);
+  background: linear-gradient(135deg, var(--bg-page) 0%, var(--bg-card-solid) 50%, #1a1f26 100%);
 }
 
 .page-header {
@@ -2350,25 +2379,20 @@ onUnmounted(() => {
   align-items: center;
   padding: 20px 32px;
   background: rgba(255, 255, 255, 0.8);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid var(--color-border);
   transition: all 0.3s ease;
 }
 
 .dark-theme .page-header {
   background: rgba(22, 27, 34, 0.95);
-  border-bottom-color: rgba(255, 255, 255, 0.1);
 }
 
 .page-title {
-  font-size: 24px;
+  font-size: var(--font-size-4xl);
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   margin: 0;
   transition: color 0.3s ease;
-}
-
-.dark-theme .page-title {
-  color: #e6edf3;
 }
 
 .content-wrapper {
@@ -2382,11 +2406,7 @@ onUnmounted(() => {
 }
 
 .material-tabs :deep(.el-tabs__nav-wrap::after) {
-  background-color: rgba(0, 0, 0, 0.1);
-}
-
-.dark-theme .material-tabs :deep(.el-tabs__nav-wrap::after) {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--color-border);
 }
 
 .material-tabs :deep(.el-tabs__item) {
@@ -2400,27 +2420,27 @@ onUnmounted(() => {
 }
 
 .material-tabs :deep(.el-tabs__item:hover) {
-  color: #409EFF;
+  color: var(--color-primary);
 }
 
 .dark-theme .material-tabs :deep(.el-tabs__item:hover) {
-  color: #00d9ff;
+  color: var(--brand-color-start);
 }
 
 .material-tabs :deep(.el-tabs__item.is-active) {
-  color: #409EFF;
+  color: var(--color-primary);
 }
 
 .dark-theme .material-tabs :deep(.el-tabs__item.is-active) {
-  color: #00d9ff;
+  color: var(--brand-color-start);
 }
 
 .material-tabs :deep(.el-tabs__active-bar) {
-  background-color: #409EFF;
+  background-color: var(--color-primary);
 }
 
 .dark-theme .material-tabs :deep(.el-tabs__active-bar) {
-  background-color: #00d9ff;
+  background-color: var(--brand-color-start);
 }
 
 .search-filter {
@@ -2458,7 +2478,7 @@ onUnmounted(() => {
 
 .material-card {
   background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color-border);
   border-radius: 16px;
   overflow: hidden;
   cursor: pointer;
@@ -2468,7 +2488,6 @@ onUnmounted(() => {
 
 .dark-theme .material-card {
   background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.1);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
 }
 
@@ -2486,7 +2505,7 @@ onUnmounted(() => {
 .card-thumbnail {
   position: relative;
   aspect-ratio: 16/9;
-  background: #f5f7fa;
+  background: var(--bg-muted);
   overflow: hidden;
 }
 
@@ -2543,17 +2562,13 @@ onUnmounted(() => {
 
 .card-title {
   margin: 0 0 8px 0;
-  font-size: 16px;
+  font-size: var(--font-size-lg);
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   transition: color 0.3s ease;
-}
-
-.dark-theme .card-title {
-  color: #e6edf3;
 }
 
 .card-meta {
@@ -2575,7 +2590,7 @@ onUnmounted(() => {
 
 .meta-tag.audio {
   background: rgba(0, 217, 255, 0.15);
-  color: #00d9ff;
+  color: var(--brand-color-start);
 }
 
 .card-actions {
@@ -2586,8 +2601,8 @@ onUnmounted(() => {
 }
 
 .material-dialog :deep(.el-dialog) {
-  background: var(--bg-primary, #fff);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: var(--bg-card-solid);
+  border: 1px solid var(--color-border);
   border-radius: 16px;
   transition: all 0.3s;
 }
@@ -2599,8 +2614,8 @@ onUnmounted(() => {
 }
 
 .material-dialog :deep(.el-dialog__title) {
-  color: var(--text-primary, #303133);
-  font-size: 18px;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-xl);
   font-weight: 600;
   transition: color 0.3s;
 }
@@ -2612,7 +2627,7 @@ onUnmounted(() => {
 }
 
 .dialog-content {
-  color: #303133;
+  color: var(--color-text-primary);
   transition: color 0.3s;
 }
 
@@ -2621,8 +2636,8 @@ onUnmounted(() => {
 .audio-upload-section {
   margin-bottom: 24px;
   padding: 16px;
-  background: #f5f7fa;
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: var(--bg-muted);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   transition: all 0.3s;
 }
@@ -2638,19 +2653,19 @@ onUnmounted(() => {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-primary);
   transition: color 0.3s;
 }
 
 /* 暗色主题下的对话框样式 - 使用 :deep 确保穿透到对话框内部 */
 .material-dialog.dark-theme :deep(.el-dialog) {
   background: #1a1f26 !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid var(--color-border) !important;
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
 .material-dialog.dark-theme :deep(.el-dialog__header) {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-bottom: 1px solid var(--color-border) !important;
   background: #1a1f26 !important;
 }
 
@@ -2664,7 +2679,7 @@ onUnmounted(() => {
 }
 
 .material-dialog.dark-theme :deep(.el-dialog__footer) {
-  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-top: 1px solid var(--color-border) !important;
   background: #1a1f26 !important;
 }
 
@@ -2702,7 +2717,7 @@ onUnmounted(() => {
   position: relative;
   border-radius: 8px;
   overflow: hidden;
-  background: #f5f7fa;
+  background: var(--bg-muted);
   transition: all 0.3s;
 }
 
@@ -2726,7 +2741,7 @@ onUnmounted(() => {
 }
 
 .upload-placeholder:hover {
-  border-color: #00d9ff;
+  border-color: var(--brand-color-start);
   background: rgba(0, 217, 255, 0.05);
 }
 
@@ -2832,8 +2847,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   background: rgba(0, 217, 255, 0.1);
-  border-radius: 8px;
-  color: #00d9ff;
+  border-radius: var(--border-radius-md);
+  color: var(--brand-color-start);
   transition: all 0.3s;
 }
 
@@ -2845,8 +2860,8 @@ onUnmounted(() => {
 }
 
 .audio-name {
-  font-size: 14px;
-  color: #303133;
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
   transition: color 0.3s;
 }
 
@@ -2995,7 +3010,7 @@ onUnmounted(() => {
 /* 暗色主题下的音频样式 */
 .material-dialog.dark-theme .audio-icon {
   background: rgba(0, 217, 255, 0.1);
-  color: #00d9ff;
+  color: var(--brand-color-start);
 }
 
 .material-dialog.dark-theme .audio-name {
@@ -3032,7 +3047,7 @@ onUnmounted(() => {
 
 .audio-preview .el-icon {
   font-size: 32px;
-  color: #00ff88;
+  color: var(--brand-color-end);
 }
 
 .audio-preview span {
@@ -3065,7 +3080,7 @@ onUnmounted(() => {
 }
 
 .audio-merge-info :deep(.el-alert__title) {
-  color: #409EFF;
+  color: var(--color-primary);
   font-size: 13px;
 }
 
@@ -3159,7 +3174,7 @@ onUnmounted(() => {
 }
 
 .deerflow-badge:hover {
-  color: #00d9ff;
+  color: var(--brand-color-start);
   text-shadow: 0 0 10px rgba(0, 217, 255, 0.5);
 }
 
@@ -3276,8 +3291,8 @@ onUnmounted(() => {
 }
 
 .audio-card .card-title {
-  color: #303133;
-  font-size: 14px;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
   font-weight: 600;
   margin: 0;
   overflow: hidden;
@@ -3295,8 +3310,8 @@ onUnmounted(() => {
 }
 
 .audio-card .meta-tag {
-  font-size: 12px;
-  color: #606266;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-regular);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -3305,7 +3320,7 @@ onUnmounted(() => {
 
 .audio-card .playing-indicator {
   font-size: 11px;
-  color: #409eff;
+  color: var(--color-primary);
   font-weight: 600;
   background: #ecf5ff;
   padding: 2px 8px;
