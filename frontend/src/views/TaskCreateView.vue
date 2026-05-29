@@ -1,6 +1,12 @@
 <template>
   <div class="task-create-page">
-    <el-page-header title="新建任务" @back="goBack" />
+    <div class="page-header-row">
+      <h2 class="page-title">新建任务</h2>
+      <el-button type="primary" text @click="goBack">
+        <el-icon><ArrowLeft /></el-icon>
+        返回
+      </el-button>
+    </div>
     
     <!-- 文件上传隐藏输入 -->
     <input 
@@ -2172,6 +2178,13 @@ const handleTagGroupChange = async (groupId) => {
 </script>
 
 <style scoped lang="scss">
+.page-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-xl);
+}
+
 .task-create-page {
   padding: 20px;
   max-width: 1400px;
@@ -2224,7 +2237,7 @@ const handleTagGroupChange = async (groupId) => {
 
 .selector-label {
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-regular);
 }
 
 .tag-group-select {
@@ -2262,7 +2275,7 @@ const handleTagGroupChange = async (groupId) => {
   min-width: 80px;
   padding-top: 8px;
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-regular);
   font-weight: 500;
 }
 
@@ -2326,7 +2339,7 @@ const handleTagGroupChange = async (groupId) => {
   flex-direction: column;
   align-items: flex-start;
   padding: 15px;
-  background: #f5f7fa;
+  background: var(--bg-muted);
   border-radius: 8px;
   gap: 12px;
 }
@@ -2343,7 +2356,7 @@ const handleTagGroupChange = async (groupId) => {
 .video-name {
   font-size: 14px;
   font-weight: 500;
-  color: #303133;
+  color: var(--color-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2357,7 +2370,7 @@ const handleTagGroupChange = async (groupId) => {
 }
 
 .preview-video {
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--color-border-strong);
   border-radius: 4px;
   display: block;
   max-width: 100%;
@@ -2396,13 +2409,13 @@ const handleTagGroupChange = async (groupId) => {
 .audio-params {
   margin-top: 20px;
   padding-top: 20px;
-  border-top: 1px solid #e4e7ed;
+  border-top: 1px solid var(--color-border-strong);
 }
 
 .speaker-params {
   margin-top: 15px;
   padding: 15px;
-  background: #f5f7fa;
+  background: var(--bg-muted);
   border-radius: 4px;
 }
 
@@ -2417,19 +2430,19 @@ const handleTagGroupChange = async (groupId) => {
   text-align: center;
   margin-top: 5px;
   font-size: 12px;
-  color: #606266;
+  color: var(--color-text-regular);
 }
 
 .script-tags {
   margin-top: 10px;
   padding: 10px;
-  background: #f5f7fa;
+  background: var(--bg-muted);
   border-radius: 4px;
 }
 
 .tag-label {
   font-size: 12px;
-  color: #606266;
+  color: var(--color-text-regular);
   margin-right: 10px;
 }
 
@@ -2443,11 +2456,11 @@ const handleTagGroupChange = async (groupId) => {
   gap: 15px;
   margin-top: 30px;
   padding-top: 20px;
-  border-top: 1px solid #e4e7ed;
+  border-top: 1px solid var(--color-border-strong);
 }
 
 .material-sidebar {
-  background: #f5f7fa;
+  background: var(--bg-muted);
   border-radius: 4px;
   padding: 20px;
   height: fit-content;
@@ -2469,7 +2482,7 @@ const handleTagGroupChange = async (groupId) => {
   margin-bottom: 10px;
   font-size: 14px;
   font-weight: 500;
-  color: #606266;
+  color: var(--color-text-regular);
 }
 
 .material-list {
@@ -2483,13 +2496,13 @@ const handleTagGroupChange = async (groupId) => {
   align-items: center;
   gap: 10px;
   padding: 10px;
-  background: white;
+  background: var(--bg-card-solid);
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.3s;
   
   &:hover {
-    background: #ecf5ff;
+    background: var(--color-primary-bg);
   }
 }
 
@@ -2499,9 +2512,9 @@ const handleTagGroupChange = async (groupId) => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #e4e7ed;
+  background: var(--color-border-strong);
   border-radius: 4px;
-  color: #606266;
+  color: var(--color-text-regular);
   overflow: hidden;
 }
 
@@ -2548,7 +2561,7 @@ const handleTagGroupChange = async (groupId) => {
 
   :deep(.el-dialog__header) {
     padding: 20px 24px;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--color-border-strong);
   }
 
   :deep(.el-dialog__title) {
@@ -2578,21 +2591,21 @@ const handleTagGroupChange = async (groupId) => {
   align-items: center;
   gap: 12px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--color-border-strong);
 
   h4 {
     margin: 0;
     font-size: 16px;
     font-weight: 500;
-    color: #1f2937;
+    color: var(--color-text-primary);
   }
 
   .media-type-label {
     padding: 4px 12px;
-    background: #f3f4f6;
+    background: var(--bg-muted);
     border-radius: 9999px;
     font-size: 12px;
-    color: #6b7280;
+    color: var(--color-text-secondary);
   }
 }
 
@@ -2616,33 +2629,33 @@ const handleTagGroupChange = async (groupId) => {
 .dark-theme {
   .media-clip-dialog {
     :deep(.el-dialog) {
-      background: #1e1e1e;
-      border: 1px solid #374151;
+      background: var(--bg-card-solid);
+      border: 1px solid var(--color-border-strong);
     }
 
     :deep(.el-dialog__header) {
-      border-bottom-color: #374151;
+      border-bottom-color: var(--color-border-strong);
     }
 
     :deep(.el-dialog__title) {
-      color: #f3f4f6;
+      color: var(--color-text-primary);
     }
 
     :deep(.el-dialog__body) {
-      background: #1e1e1e;
+      background: var(--bg-card-solid);
     }
   }
 
   .media-info-header {
-    border-bottom-color: #374151;
+    border-bottom-color: var(--color-border-strong);
 
     h4 {
-      color: #f3f4f6;
+      color: var(--color-text-primary);
     }
 
     .media-type-label {
-      background: #374151;
-      color: #9ca3af;
+      background: var(--color-border-strong);
+      color: var(--color-text-secondary);
     }
   }
 
@@ -2662,9 +2675,9 @@ const handleTagGroupChange = async (groupId) => {
   display: flex;
   gap: 24px;
   padding: 20px;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  background: var(--bg-page-gradient);
   border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border-strong);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
@@ -2677,15 +2690,15 @@ const handleTagGroupChange = async (groupId) => {
 }
 
 .setting-group {
-  background: white;
+  background: var(--bg-card-solid);
   border-radius: 10px;
   padding: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
   transition: box-shadow 0.2s ease;
-  
+
   &:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    box-shadow: var(--shadow-md);
   }
 }
 
@@ -2695,13 +2708,13 @@ const handleTagGroupChange = async (groupId) => {
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-text-primary);
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #f1f5f9;
-  
+  border-bottom: 1px solid var(--bg-muted);
+
   .el-icon {
-    color: #3b82f6;
+    color: var(--color-primary);
     font-size: 16px;
   }
 }
@@ -2725,7 +2738,7 @@ const handleTagGroupChange = async (groupId) => {
 .item-label {
   min-width: 70px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--color-text-regular);
   font-weight: 500;
   flex-shrink: 0;
 }
@@ -2764,11 +2777,11 @@ const handleTagGroupChange = async (groupId) => {
 
 // 横置位置选择卡片
 .position-card-horizontal {
-  background: white;
+  background: var(--bg-card-solid);
   border-radius: 10px;
   padding: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
 }
 
 .position-title {
@@ -2777,13 +2790,13 @@ const handleTagGroupChange = async (groupId) => {
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-text-primary);
   margin-bottom: 12px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #f1f5f9;
-  
+  border-bottom: 1px solid var(--bg-muted);
+
   .el-icon {
-    color: #3b82f6;
+    color: var(--color-primary);
     font-size: 16px;
   }
 }
@@ -2805,39 +2818,39 @@ const handleTagGroupChange = async (groupId) => {
   cursor: pointer;
   transition: all 0.2s ease;
   border: 2px solid transparent;
-  background: #f8fafc;
-  
+  background: var(--bg-muted);
+
   &:hover {
-    background: #eff6ff;
-    border-color: #bfdbfe;
+    background: var(--color-primary-bg);
+    border-color: var(--color-primary-light);
     transform: translateY(-2px);
   }
-  
+
   &.active {
-    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-    border-color: #1d4ed8;
-    color: white;
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+    border-color: var(--color-primary-dark);
+    color: var(--bg-card-solid);
     box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-    
+
     .option-label {
-      color: white;
+      color: var(--bg-card-solid);
     }
   }
-  
+
   .option-label {
     font-size: 13px;
     font-weight: 500;
-    color: #475569;
+    color: var(--color-text-regular);
   }
 }
 
 // 预览卡片样式
 .preview-card {
-  background: white;
+  background: var(--bg-card-solid);
   border-radius: 10px;
   padding: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -2849,13 +2862,13 @@ const handleTagGroupChange = async (groupId) => {
   gap: 8px;
   font-size: 14px;
   font-weight: 600;
-  color: #334155;
+  color: var(--color-text-primary);
   margin-bottom: 12px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #f1f5f9;
-  
+  border-bottom: 1px solid var(--bg-muted);
+
   .el-icon {
-    color: #3b82f6;
+    color: var(--color-primary);
     font-size: 16px;
   }
 }
@@ -2929,9 +2942,9 @@ const handleTagGroupChange = async (groupId) => {
   flex-direction: column;
   gap: 20px;
   padding: 20px;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  background: var(--bg-page-gradient);
   border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border-strong);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
@@ -2950,7 +2963,7 @@ const handleTagGroupChange = async (groupId) => {
 
 .slider-unit {
   font-size: 13px;
-  color: #64748b;
+  color: var(--color-text-regular);
   margin-left: 8px;
 }
 
@@ -2968,12 +2981,6 @@ const handleTagGroupChange = async (groupId) => {
   .duration-slider {
     min-width: 100%;
   }
-}
-
-// 暗色主题
-.dark-theme .transition-settings-panel {
-  background: linear-gradient(135deg, #1f1f1f 0%, #262626 100%);
-  border-color: #424242;
 }
 
 // 响应式设计
@@ -3049,306 +3056,184 @@ const handleTagGroupChange = async (groupId) => {
 
 // 暗色主题样式
 .dark-theme .task-create-page {
-  background: #141414;
-  color: #ffffff;
+  background: var(--bg-page);
+  color: var(--color-text-primary);
 }
 
 .dark-theme .form-card {
-  background: #1f1f1f;
-  border-color: #303030;
+  background: var(--bg-card-solid);
+  border-color: var(--color-border-strong);
 }
 
 .dark-theme .form-card h2 {
-  color: #ffffff;
+  color: var(--color-text-primary);
 }
 
 .dark-theme .form-card h3 {
-  color: #e0e0e0;
+  color: var(--color-text-regular);
 }
 
 .dark-theme .form-section {
-  border-color: #303030;
-}
-
-.dark-theme .subtitle-textarea-wrapper,
-.dark-theme .topic-textarea-wrapper {
-  background: #262626;
-  border-color: #424242;
+  border-color: var(--color-border-strong);
 }
 
 .dark-theme .subtitle-textarea-wrapper:focus-within,
 .dark-theme .topic-textarea-wrapper:focus-within {
-  border-color: #3b82f6;
+  border-color: var(--color-primary);
 }
 
 .dark-theme .subtitle-textarea,
 .dark-theme .topic-textarea {
-  color: #ffffff;
+  color: var(--color-text-primary);
 }
 
 .dark-theme .char-count {
-  color: #9e9e9e;
-}
-
-.dark-theme .upload-area {
-  background: #262626;
-  border-color: #424242;
+  color: var(--color-text-secondary);
 }
 
 .dark-theme .upload-area:hover {
-  border-color: #3b82f6;
-  background: #2d2d2d;
-}
-
-.dark-theme .upload-hint {
-  color: #9e9e9e;
-}
-
-.dark-theme .upload-hint-text {
-  color: #bdbdbd;
-}
-
-.dark-theme .uploaded-file {
-  background: #262626;
-  border-color: #424242;
+  border-color: var(--color-primary);
+  background: var(--bg-card-hover);
 }
 
 .dark-theme .file-info .name {
-  color: #ffffff;
+  color: var(--color-text-primary);
 }
 
 .dark-theme .file-info .path {
-  color: #9e9e9e;
-}
-
-.dark-theme .video-params,
-.dark-theme .audio-params {
-  border-color: #303030;
-}
-
-.dark-theme .speaker-params {
-  background: #262626;
+  color: var(--color-text-secondary);
 }
 
 .dark-theme .speaker-params h4 {
-  color: #e0e0e0;
-}
-
-.dark-theme .slider-value {
-  color: #bdbdbd;
-}
-
-.dark-theme .script-tags {
-  background: #262626;
-}
-
-.dark-theme .tag-label {
-  color: #bdbdbd;
-}
-
-.dark-theme .form-actions {
-  border-color: #303030;
-}
-
-.dark-theme .material-sidebar {
-  background: #1f1f1f;
-  border-color: #303030;
-}
-
-.dark-theme .material-sidebar h3 {
-  color: #ffffff;
-}
-
-.dark-theme .material-category h4 {
-  color: #bdbdbd;
-}
-
-.dark-theme .material-item {
-  background: #262626;
-  border-color: #424242;
+  color: var(--color-text-regular);
 }
 
 .dark-theme .material-item:hover {
-  background: #2d2d2d;
-  border-color: #3b82f6;
-}
-
-.dark-theme .material-thumbnail {
-  background: #424242;
-  color: #bdbdbd;
+  border-color: var(--color-primary);
 }
 
 .dark-theme .material-name {
-  color: #ffffff;
-}
-
-.dark-theme .subtitle-settings-panel {
-  background: linear-gradient(135deg, #1f1f1f 0%, #262626 100%);
-  border-color: #424242;
-}
-
-.dark-theme .setting-group {
-  background: #262626;
-  border-color: #424242;
-}
-
-.dark-theme .group-title {
-  color: #e0e0e0;
-  border-color: #303030;
-}
-
-.dark-theme .item-label {
-  color: #bdbdbd;
-}
-
-.dark-theme .color-input-wrapper {
-  background: #262626;
-  border-color: #424242;
-}
-
-.dark-theme .color-display {
-  border-color: #424242;
-}
-
-.dark-theme .position-card {
-  background: #262626;
-  border-color: #424242;
+  color: var(--color-text-primary);
 }
 
 .dark-theme .position-card.selected {
-  border-color: #3b82f6;
-  background: #2d2d2d;
+  border-color: var(--color-primary);
 }
 
 .dark-theme .position-card-title {
-  color: #bdbdbd;
+  color: var(--color-text-regular);
 }
 
 .dark-theme .position-card-inner {
-  background: #1f1f1f;
-  border-color: #424242;
-}
-
-.dark-theme .position-option {
-  background: #262626;
-  border-color: #424242;
+  background: var(--bg-card-solid);
+  border-color: var(--color-border-strong);
 }
 
 .dark-theme .position-option.selected {
-  background: #3b82f6;
-  border-color: #3b82f6;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 .dark-theme .position-option.selected .position-dot {
-  background: #ffffff;
+  background: var(--bg-card-solid);
 }
 
 .dark-theme .position-dot {
-  background: #bdbdbd;
-}
-
-.dark-theme .preview-card {
-  background: #262626;
-  border-color: #424242;
+  background: var(--color-text-regular);
 }
 
 .dark-theme .preview-card-title {
-  color: #bdbdbd;
-}
-
-.dark-theme .preview-container {
-  background: linear-gradient(135deg, #1f1f1f 0%, #262626 100%);
-  border-color: #424242;
+  color: var(--color-text-regular);
 }
 
 .dark-theme .preview-subtitle {
   background: rgba(0, 0, 0, 0.75) !important;
-  color: #ffffff !important;
+  color: var(--color-text-primary) !important;
 }
 
 .dark-theme :deep(.el-input__wrapper),
 .dark-theme :deep(.el-textarea__inner),
 .dark-theme :deep(.el-select__wrapper) {
-  background: #262626;
-  box-shadow: 0 0 0 1px #424242 inset;
+  background: var(--bg-muted);
+  box-shadow: 0 0 0 1px var(--color-border-strong) inset;
 }
 
 .dark-theme :deep(.el-input__wrapper:hover),
 .dark-theme :deep(.el-textarea__inner:hover),
 .dark-theme :deep(.el-select__wrapper:hover) {
-  box-shadow: 0 0 0 1px #616161 inset;
+  box-shadow: 0 0 0 1px var(--color-text-secondary) inset;
 }
 
 .dark-theme :deep(.el-input__wrapper.is-focus),
 .dark-theme :deep(.el-textarea__inner:focus),
 .dark-theme :deep(.el-select__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #3b82f6 inset;
+  box-shadow: 0 0 0 1px var(--color-primary) inset;
 }
 
 .dark-theme :deep(.el-input__inner),
 .dark-theme :deep(.el-textarea__inner) {
-  color: #ffffff;
+  color: var(--color-text-primary);
 }
 
 .dark-theme :deep(.el-input__inner::placeholder),
 .dark-theme :deep(.el-textarea__inner::placeholder) {
-  color: #616161;
+  color: var(--color-text-placeholder);
 }
 
 .dark-theme :deep(.el-select__placeholder) {
-  color: #616161;
+  color: var(--color-text-placeholder);
 }
 
 .dark-theme :deep(.el-select__selected-item) {
-  color: #ffffff;
+  color: var(--color-text-primary);
 }
 
 .dark-theme :deep(.el-radio-button__inner) {
-  background: #262626;
-  border-color: #424242;
-  color: #bdbdbd;
+  background: var(--bg-muted);
+  border-color: var(--color-border-strong);
+  color: var(--color-text-regular);
 }
 
 .dark-theme :deep(.el-radio-button__inner:hover) {
-  color: #ffffff;
+  color: var(--color-text-primary);
 }
 
 .dark-theme :deep(.el-radio-button:first-child .el-radio-button__inner) {
-  border-left-color: #424242;
+  border-left-color: var(--color-border-strong);
 }
 
 .dark-theme :deep(.el-radio-button__orig-radio:checked + .el-radio-button__inner) {
-  background: #3b82f6;
-  border-color: #3b82f6;
-  color: #ffffff;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-text-primary);
 }
 
 .dark-theme :deep(.el-switch__core) {
-  background: #424242;
+  background: var(--color-border-strong);
 }
 
 .dark-theme :deep(.el-switch.is-checked .el-switch__core) {
-  background: #3b82f6;
+  background: var(--color-primary);
 }
 
 .dark-theme :deep(.el-slider__runway) {
-  background: #424242;
+  background: var(--color-border-strong);
 }
 
 .dark-theme :deep(.el-slider__bar) {
-  background: #3b82f6;
+  background: var(--color-primary);
 }
 
 .dark-theme :deep(.el-slider__button) {
-  border-color: #3b82f6;
+  border-color: var(--color-primary);
 }
 
 .dark-theme :deep(.el-color-picker__trigger) {
-  border-color: #424242;
+  border-color: var(--color-border-strong);
 }
 
 .dark-theme :deep(.el-color-picker__trigger:hover) {
-  border-color: #616161;
+  border-color: var(--color-text-secondary);
 }
 
 </style>

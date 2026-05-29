@@ -340,7 +340,6 @@
       </el-form>
     </div>
 
-    <a href="https://deerflow.tech" target="_blank" class="deerflow-badge">✦ Deerflow</a>
   </div>
 </template>
 
@@ -607,14 +606,10 @@ onMounted(() => {
 
 <style scoped>
 .settings-container {
-  min-height: calc(100vh - 64px - 40px);
-  padding: 24px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 50%, #eef2f6 100%);
-  transition: background 0.3s ease;
-}
-
-.dark-theme .settings-container {
-  background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 50%, #0f0f23 100%);
+  min-height: calc(100vh - var(--header-height) - var(--footer-height));
+  padding: var(--space-xl);
+  background: var(--bg-page-gradient);
+  transition: background var(--transition-normal);
 }
 
 .settings-content {
@@ -623,80 +618,49 @@ onMounted(() => {
 }
 
 .page-header {
-  margin-bottom: 32px;
-}
-
-.page-title {
-  font-size: 28px;
-  font-weight: 600;
-  color: #303133;
-  margin: 0;
-  transition: color 0.3s ease;
-}
-
-.dark-theme .page-title {
-  color: #fff;
+  margin-bottom: var(--space-2xl);
 }
 
 .settings-card {
-  margin-bottom: 24px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  margin-bottom: var(--space-xl);
+  background: var(--bg-card);
+  border: 1px solid var(--color-border);
   backdrop-filter: blur(10px);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s ease;
-}
-
-.dark-theme .settings-card {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-md);
+  transition: all var(--transition-normal);
 }
 
 .settings-card :deep(.el-card__header) {
-  background: rgba(64, 158, 255, 0.05);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  padding: 16px 20px;
-  transition: all 0.3s ease;
-}
-
-.dark-theme .settings-card :deep(.el-card__header) {
-  background: rgba(0, 217, 255, 0.05);
-  border-bottom-color: rgba(255, 255, 255, 0.08);
+  background: var(--color-primary-bg);
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-base) var(--space-lg);
+  transition: all var(--transition-normal);
 }
 
 .settings-card :deep(.el-card__body) {
-  padding: 24px 20px;
+  padding: var(--space-xl) var(--space-lg);
 }
 
 .card-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-  transition: color 0.3s ease;
-}
-
-.dark-theme .card-header {
-  color: #fff;
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  transition: color var(--transition-normal);
 }
 
 .card-header .el-icon {
-  font-size: 20px;
-  color: #409EFF;
-  transition: color 0.3s ease;
-}
-
-.dark-theme .card-header .el-icon {
-  color: #00d9ff;
+  font-size: var(--font-size-2xl);
+  color: var(--color-primary);
+  transition: color var(--transition-normal);
 }
 
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
+  gap: var(--space-lg);
 }
 
 .form-grid .full-width {
@@ -704,97 +668,54 @@ onMounted(() => {
 }
 
 .form-grid :deep(.el-form-item__label) {
-  color: #606266;
-  font-weight: 500;
-  transition: color 0.3s ease;
-}
-
-.dark-theme .form-grid :deep(.el-form-item__label) {
-  color: #a0aec0;
+  color: var(--color-text-regular);
+  font-weight: var(--font-weight-medium);
+  transition: color var(--transition-normal);
 }
 
 .form-grid :deep(.el-input__wrapper),
 .form-grid :deep(.el-textarea__inner) {
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: var(--bg-card);
+  border: 1px solid var(--color-border);
   box-shadow: none;
-  transition: all 0.3s ease;
-}
-
-.dark-theme .form-grid :deep(.el-input__wrapper),
-.dark-theme .form-grid :deep(.el-textarea__inner) {
-  background: rgba(0, 0, 0, 0.3);
-  border-color: rgba(255, 255, 255, 0.1);
+  transition: all var(--transition-normal);
 }
 
 .form-grid :deep(.el-input__wrapper:hover),
 .form-grid :deep(.el-textarea__inner:hover) {
-  border-color: rgba(64, 158, 255, 0.5);
-}
-
-.dark-theme .form-grid :deep(.el-input__wrapper:hover),
-.dark-theme .form-grid :deep(.el-textarea__inner:hover) {
-  border-color: rgba(0, 217, 255, 0.5);
+  border-color: var(--color-primary-light);
 }
 
 .form-grid :deep(.el-input__wrapper.is-focus),
 .form-grid :deep(.el-textarea__inner:focus) {
-  border-color: #409EFF;
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.1);
-}
-
-.dark-theme .form-grid :deep(.el-input__wrapper.is-focus),
-.dark-theme .form-grid :deep(.el-textarea__inner:focus) {
-  border-color: #00d9ff;
-  box-shadow: 0 0 0 2px rgba(0, 217, 255, 0.1);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-bg);
 }
 
 .form-hint {
-  color: #909399;
-  font-size: 12px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
   margin-top: 6px;
   line-height: 1.4;
-  transition: color 0.3s ease;
-}
-
-.dark-theme .form-hint {
-  color: #718096;
+  transition: color var(--transition-normal);
 }
 
 .form-grid :deep(.el-slider__runway) {
-  background: rgba(0, 0, 0, 0.1);
-}
-
-.dark-theme .form-grid :deep(.el-slider__runway) {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-border);
 }
 
 .form-grid :deep(.el-slider__bar) {
-  background: linear-gradient(90deg, #409EFF, #67c23a);
-}
-
-.dark-theme .form-grid :deep(.el-slider__bar) {
-  background: linear-gradient(90deg, #00d9ff, #00ff88);
+  background: linear-gradient(90deg, var(--color-primary), var(--color-success));
 }
 
 .form-grid :deep(.el-slider__button) {
-  border-color: #409EFF;
-  background: #409EFF;
-}
-
-.dark-theme .form-grid :deep(.el-slider__button) {
-  border-color: #00d9ff;
-  background: #00d9ff;
+  border-color: var(--color-primary);
+  background: var(--color-primary);
 }
 
 .form-grid :deep(.el-switch) {
-  --el-switch-off-color: rgba(0, 0, 0, 0.2);
-  --el-switch-on-color: #409EFF;
-}
-
-.dark-theme .form-grid :deep(.el-switch) {
-  --el-switch-off-color: rgba(255, 255, 255, 0.1);
-  --el-switch-on-color: #00d9ff;
+  --el-switch-off-color: var(--color-border);
+  --el-switch-on-color: var(--color-primary);
 }
 
 .form-grid :deep(.el-input-number) {
@@ -806,26 +727,18 @@ onMounted(() => {
 }
 
 .card-footer {
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  border-top: 1px solid var(--color-border);
   display: flex;
   justify-content: flex-end;
-  transition: border-color 0.3s ease;
-}
-
-.dark-theme .card-footer {
-  border-top-color: rgba(255, 255, 255, 0.08);
+  transition: border-color var(--transition-normal);
 }
 
 .card-footer .el-button {
-  background: linear-gradient(135deg, #409EFF, #67c23a);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-success));
   border: none;
-  font-weight: 600;
-}
-
-.dark-theme .card-footer .el-button {
-  background: linear-gradient(135deg, #00d9ff, #00ff88);
+  font-weight: var(--font-weight-semibold);
 }
 
 .card-footer .el-button:hover {
@@ -834,128 +747,98 @@ onMounted(() => {
 }
 
 .cache-info {
-  margin-bottom: 16px;
-  padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.02);
-  border-radius: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.05);
+  margin-bottom: var(--space-base);
+  padding: var(--space-md) var(--space-base);
+  background: var(--bg-dark-muted);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
 }
 
-.dark-theme .cache-info {
-  background: rgba(255, 255, 255, 0.02);
-  border-color: rgba(255, 255, 255, 0.05);
-}
 
 .cache-info p {
-  margin: 0 0 8px 0;
-  color: #606266;
-  font-size: 14px;
+  margin: 0 0 var(--space-sm) 0;
+  color: var(--color-text-regular);
+  font-size: var(--font-size-base);
 }
 
-.dark-theme .cache-info p {
-  color: #a0aec0;
-}
 
 .cache-info ul {
   margin: 0;
-  padding-left: 20px;
-  color: #909399;
+  padding-left: var(--space-lg);
+  color: var(--color-text-secondary);
   font-size: 13px;
 }
 
-.dark-theme .cache-info ul {
-  color: #718096;
-}
 
 .cache-info li {
-  margin: 4px 0;
+  margin: var(--space-xs) 0;
 }
 
 /* 低显存模式开关样式 */
 .low-memory-mode-section {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-sm);
 }
 
 .low-memory-mode-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-sm);
 }
 
 .low-memory-mode-label {
-  font-weight: 600;
-  font-size: 15px;
-  color: #303133;
-}
-
-.dark-theme .low-memory-mode-label {
-  color: #fff;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-md);
+  color: var(--color-text-primary);
 }
 
 .low-memory-mode-hint {
   margin: 0;
   font-size: 13px;
-  color: #909399;
+  color: var(--color-text-secondary);
   line-height: 1.5;
-}
-
-.dark-theme .low-memory-mode-hint {
-  color: #718096;
 }
 
 /* 超低显存模式开关样式 */
 .ultra-low-memory-section {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px dashed rgba(0, 0, 0, 0.1);
-}
-
-.dark-theme .ultra-low-memory-section {
-  border-top-color: rgba(255, 255, 255, 0.1);
+  margin-top: var(--space-lg);
+  padding-top: var(--space-base);
+  border-top: 1px dashed var(--color-border);
 }
 
 .ultra-low-memory-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: var(--space-sm);
 }
 
 .ultra-low-memory-label {
-  font-weight: 600;
-  font-size: 15px;
-  color: #303133;
-}
-
-.dark-theme .ultra-low-memory-label {
-  color: #fff;
+  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-md);
+  color: var(--color-text-primary);
 }
 
 .ultra-low-memory-hint {
   margin: 0;
   font-size: 13px;
-  color: #909399;
+  color: var(--color-text-secondary);
   line-height: 1.5;
-}
-
-.dark-theme .ultra-low-memory-hint {
-  color: #718096;
 }
 
 /* 激活部分样式 */
 .activation-section {
-  padding: 8px 0;
+  padding: var(--space-sm) 0;
 }
 
 .activation-status {
-  margin-bottom: 20px;
+  margin-bottom: var(--space-lg);
 }
 
 .status-row {
   display: flex;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-md);
 }
 
 .status-row:last-child {
@@ -963,98 +846,73 @@ onMounted(() => {
 }
 
 .status-label {
-  font-weight: 500;
-  color: #606266;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-regular);
   min-width: 80px;
 }
 
-.dark-theme .status-label {
-  color: #a0aec0;
-}
-
 .status-value {
-  color: #303133;
-  font-weight: 600;
-}
-
-.dark-theme .status-value {
-  color: #fff;
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
 }
 
 .machine-code-wrapper {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm);
 }
 
 .machine-code {
-  font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-base);
   letter-spacing: 1px;
-  background: rgba(0, 0, 0, 0.05);
-  padding: 6px 12px;
-  border-radius: 4px;
-  color: #303133;
+  background: var(--bg-dark-muted);
+  padding: 6px var(--space-md);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
 }
 
 .dark-theme .machine-code {
   background: rgba(255, 255, 255, 0.08);
-  color: #00d9ff;
+  color: var(--brand-color-start);
 }
 
 .activation-actions {
-  margin-top: 16px;
+  margin-top: var(--space-base);
 }
 
 /* 激活信息样式 */
 .activation-info {
-  margin-top: 16px;
+  margin-top: var(--space-base);
 }
 
 .activation-info :deep(.el-divider__text) {
-  color: #606266;
-  font-size: 14px;
-}
-
-.dark-theme .activation-info :deep(.el-divider__text) {
-  color: #a0aec0;
+  color: var(--color-text-regular);
+  font-size: var(--font-size-base);
 }
 
 .info-section {
-  padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.02);
-  border-radius: 8px;
-  border: 1px solid rgba(0, 0, 0, 0.05);
-}
-
-.dark-theme .info-section {
-  background: rgba(255, 255, 255, 0.02);
-  border-color: rgba(255, 255, 255, 0.05);
+  padding: var(--space-md) var(--space-base);
+  background: var(--bg-dark-muted);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-light);
 }
 
 .info-text {
-  margin: 0 0 16px 0;
-  color: #606266;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.dark-theme .info-text {
-  color: #a0aec0;
+  margin: 0 0 var(--space-base) 0;
+  color: var(--color-text-regular);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-relaxed);
 }
 
 .sales-info {
-  padding-bottom: 12px;
-  border-bottom: 1px dashed rgba(0, 0, 0, 0.1);
-}
-
-.dark-theme .sales-info {
-  border-bottom-color: rgba(255, 255, 255, 0.1);
+  padding-bottom: var(--space-md);
+  border-bottom: 1px dashed var(--color-border);
 }
 
 .price-info,
 .contact-info {
-  margin-bottom: 12px;
+  margin-bottom: var(--space-md);
 }
 
 .contact-info {
@@ -1063,27 +921,22 @@ onMounted(() => {
 
 .price-title,
 .contact-title {
-  margin: 0 0 8px 0;
-  font-weight: 600;
-  color: #303133;
-  font-size: 14px;
-}
-
-.dark-theme .price-title,
-.dark-theme .contact-title {
-  color: #fff;
+  margin: 0 0 var(--space-sm) 0;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
 }
 
 .price-list {
   margin: 0;
-  padding-left: 20px;
+  padding-left: var(--space-lg);
   list-style: none;
 }
 
 .price-list li {
   margin: 6px 0;
-  color: #606266;
-  font-size: 14px;
+  color: var(--color-text-regular);
+  font-size: var(--font-size-base);
   position: relative;
 }
 
@@ -1091,71 +944,39 @@ onMounted(() => {
   content: '•';
   position: absolute;
   left: -12px;
-  color: #409EFF;
-}
-
-.dark-theme .price-list li {
-  color: #a0aec0;
-}
-
-.dark-theme .price-list li::before {
-  color: #00d9ff;
+  color: var(--color-primary);
 }
 
 .price {
-  font-weight: 600;
-  color: #409EFF;
-}
-
-.dark-theme .price {
-  color: #00d9ff;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-primary);
 }
 
 .price.original {
-  color: #909399;
+  color: var(--color-text-secondary);
   text-decoration: line-through;
 }
 
-.dark-theme .price.original {
-  color: #718096;
-}
-
 .discount {
-  color: #e6a23c;
+  color: var(--color-warning);
   font-size: 13px;
 }
 
-.dark-theme .discount {
-  color: #f0c040;
-}
-
 .special-price {
-  font-weight: 700;
-  color: #f56c6c;
-  font-size: 16px;
-}
-
-.dark-theme .special-price {
-  color: #ff6b6b;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-danger);
+  font-size: var(--font-size-lg);
 }
 
 .contact-detail {
   margin: 0;
-  color: #606266;
-  font-size: 14px;
-}
-
-.dark-theme .contact-detail {
-  color: #a0aec0;
+  color: var(--color-text-regular);
+  font-size: var(--font-size-base);
 }
 
 .highlight {
-  font-weight: 600;
-  color: #409EFF;
-}
-
-.dark-theme .highlight {
-  color: #00d9ff;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-primary);
 }
 
 .deerflow-badge {

@@ -198,9 +198,9 @@
       <div class="time-display">
         <span class="time-label">开始：</span>
         <span class="time-value">{{ formatTime(clipStartTime) }}</span>
-        <span class="time-label" style="margin-left: 16px;">结束：</span>
+        <span class="time-label" style="margin-left: var(--space-base);">结束：</span>
         <span class="time-value">{{ formatTime(clipEndTime) }}</span>
-        <span class="time-label" style="margin-left: 16px;">时长：</span>
+        <span class="time-label" style="margin-left: var(--space-base);">时长：</span>
         <span class="time-value highlight">{{ formatTime(clipDuration) }}</span>
       </div>
     </div>
@@ -493,19 +493,27 @@ const hasCropEdit = () => {
 // === 媒体信息加载 ===
 const cleanFilePath = (path) => {
   if (!path) return ''
+  // 先标准化反斜杠为正斜杠
   let cleaned = path.replace(/\\/g, '/')
-  // 去除URL前缀（各种格式）
-  cleaned = cleaned.replace(/^\/api\/files\//, '').replace(/^\/files\//, '').replace(/^\/api\//, '')
+  // 去除各种URL前缀
+  cleaned = cleaned
+    .replace(/^\/api\/files\//, '')
+    .replace(/^\/files\//, '')
+    .replace(/^\/api\//, '')
+    .replace(/^files\//, '')
+  console.log('[MediaClipper] cleanFilePath:', { input: path, output: cleaned })
   return cleaned
 }
 
 const loadMediaInfo = async () => {
+  console.log('[MediaClipper] loadMediaInfo 开始:', { filePath: props.filePath, mediaType: props.mediaType })
   try {
     const response = await mediaClipApi.getInfo({
       file_path: cleanFilePath(props.filePath),
       file_type: isAudio.value ? 'audio' : 'video'
     })
 
+    console.log('[MediaClipper] getInfo 响应:', { code: response.code, data: response.data })
     if (response.code === 200) {
       duration.value = response.data.duration || 0
 
@@ -593,10 +601,17 @@ const drawWaveform = () => {
   const width = canvas.width
   const height = canvas.height
 
+  // Canvas 不支持 CSS 变量，以下颜色需与 main.css 变量保持同步
+  // 亮色: bg=#f5f7fa(--bg-page), primary=#409EFF(--color-primary), success=#67c23a(--color-success)
+  // 暗色: bg=#161b22(--bg-card-solid), primary=#00d9ff(--color-primary), success=#00ff88(--color-success)
+  const bgColor = props.isDarkTheme ? '#161b22' : '#f5f7fa'
+  const waveStartColor = props.isDarkTheme ? '#00d9ff' : '#409eff'
+  const waveEndColor = props.isDarkTheme ? '#00ff88' : '#67c23a'
+
   ctx.clearRect(0, 0, width, height)
 
   // 背景
-  ctx.fillStyle = props.isDarkTheme ? '#1a1f26' : '#f5f7fa'
+  ctx.fillStyle = bgColor
   ctx.fillRect(0, 0, width, height)
 
   // 波形
@@ -609,13 +624,8 @@ const drawWaveform = () => {
     const barHeight = amplitude * height * 0.9
 
     const gradient = ctx.createLinearGradient(0, centerY - barHeight / 2, 0, centerY + barHeight / 2)
-    if (props.isDarkTheme) {
-      gradient.addColorStop(0, '#00d9ff')
-      gradient.addColorStop(1, '#00ff88')
-    } else {
-      gradient.addColorStop(0, '#409eff')
-      gradient.addColorStop(1, '#67c23a')
-    }
+    gradient.addColorStop(0, waveStartColor)
+    gradient.addColorStop(1, waveEndColor)
 
     ctx.fillStyle = gradient
     ctx.fillRect(i * barWidth, centerY - barHeight / 2, Math.max(1, barWidth - 1), barHeight)
@@ -876,6 +886,17 @@ const handleSave = async () => {
     // 获取实际参数
     const trimStart = activeMode.value === 'trim' ? clipStartTime.value : (pendingTrim.value?.startTime ?? 0)
     const trimEnd = activeMode.value === 'trim' ? clipEndTime.value : (pendingTrim.value?.endTime ?? duration.value)
+
+    console.log('[MediaClipper] handleSave 开始:', {
+      filePath,
+      propsFilePath: props.filePath,
+      mediaType: props.mediaType,
+      isAudio: isAudio.value,
+      doTrim,
+      doCrop,
+      trimStart,
+      trimEnd
+    })
     const cropX = activeMode.value === 'crop' ? cropRect.value.x : (pendingCrop.value?.x ?? 0)
     const cropY = activeMode.value === 'crop' ? cropRect.value.y : (pendingCrop.value?.y ?? 0)
     const cropW = activeMode.value === 'crop' ? cropRect.value.w : (pendingCrop.value?.w ?? 1)
@@ -1000,7 +1021,7 @@ defineExpose({
 <style scoped lang="scss">
 .media-clipper {
   position: relative;
-  margin-top: 4px;
+  margin-top: var(--space-xs);
   min-height: 400px;
 }
 
@@ -1010,21 +1031,21 @@ defineExpose({
   align-items: center;
   justify-content: space-between;
   padding: 6px 10px;
-  background: #f8fafc;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
-  gap: 8px;
+  background: var(--bg-muted);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  gap: var(--space-sm);
 }
 
 .dark-theme .player-toolbar {
-  background: #2d2d2d;
-  border-color: #424242;
+  background: var(--bg-card-solid);
+  border-color: var(--color-border-strong);
 }
 
 .toolbar-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm);
 }
 
 .volume-slider {
@@ -1032,12 +1053,8 @@ defineExpose({
 }
 
 .volume-icon {
-  font-size: 16px;
-  color: #64748b;
-}
-
-.dark-theme .volume-icon {
-  color: #9e9e9e;
+  font-size: var(--font-size-lg);
+  color: var(--color-text-secondary);
 }
 
 .toolbar-right {
@@ -1048,8 +1065,8 @@ defineExpose({
 
 /* === 媒体播放器 === */
 .media-player-container {
-  margin: 8px 0;
-  border-radius: 6px;
+  margin: var(--space-sm) 0;
+  border-radius: var(--radius-sm);
   overflow: hidden;
   background: #000;
   position: relative;
@@ -1111,28 +1128,23 @@ defineExpose({
 
 .crop-box {
   position: absolute;
-  border: 2px solid #409eff;
+  border: 2px solid var(--color-primary);
   cursor: move;
   z-index: 21;
-}
-
-.dark-theme .crop-box {
-  border-color: #00d9ff;
 }
 
 .crop-handle {
   position: absolute;
   width: 10px;
   height: 10px;
-  background: #409eff;
-  border: 1px solid #fff;
+  background: var(--color-primary);
+  border: 1px solid var(--bg-card-solid);
   border-radius: 2px;
   z-index: 22;
 }
 
 .dark-theme .crop-handle {
-  background: #00d9ff;
-  border-color: #333;
+  border-color: var(--color-border-strong);
 }
 
 .crop-handle-tl { top: -5px; left: -5px; cursor: nw-resize; }
@@ -1149,32 +1161,31 @@ defineExpose({
   bottom: -22px;
   left: 50%;
   transform: translateX(-50%);
-  background: #409eff;
-  color: white;
-  padding: 1px 8px;
+  background: var(--color-primary);
+  color: var(--bg-card-solid);
+  padding: 1px var(--space-sm);
   border-radius: 3px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   white-space: nowrap;
 }
 
 .dark-theme .crop-size-label {
-  background: #00d9ff;
   color: #1a1a1a;
 }
 
 /* === 时间剪辑面板 === */
 .trim-panel {
   position: relative;
-  margin-top: 8px;
+  margin-top: var(--space-sm);
   padding: 10px;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  background: var(--bg-muted);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
 }
 
 .dark-theme .trim-panel {
-  background: #262626;
-  border-color: #424242;
+  background: var(--bg-card-solid);
+  border-color: var(--color-border-strong);
 }
 
 .audio-timeline,
@@ -1186,41 +1197,36 @@ defineExpose({
 .frame-ruler {
   display: flex;
   justify-content: space-between;
-  padding: 4px 0;
+  padding: var(--space-xs) 0;
   font-size: 10px;
-  color: #64748b;
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.dark-theme .frame-ruler {
-  border-color: #424242;
-  color: #9e9e9e;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border-strong);
 }
 
 .timeline-track {
   height: 50px;
-  background: #eef2f6;
-  border-radius: 4px;
+  background: var(--bg-page);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   position: relative;
   overflow: hidden;
 }
 
 .dark-theme .timeline-track {
-  background: #2d2d2d;
+  background: var(--bg-card-solid);
 }
 
 .waveform-container {
   position: relative;
   height: 80px;
-  background: #eef2f6;
-  border-radius: 4px;
+  background: var(--bg-page);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   overflow: hidden;
 }
 
 .dark-theme .waveform-container {
-  background: #2d2d2d;
+  background: var(--bg-card-solid);
 }
 
 .waveform-canvas {
@@ -1263,12 +1269,12 @@ defineExpose({
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(64, 158, 255, 0.15);
-  border-left: 2px solid #409eff;
-  border-right: 2px solid #409eff;
+  background: var(--color-primary-bg);
+  border-left: 2px solid var(--color-primary);
+  border-right: 2px solid var(--color-primary);
   cursor: move;
   z-index: 5;
-  transition: background 0.15s;
+  transition: background var(--transition-fast);
 }
 
 .clip-region:hover {
@@ -1277,7 +1283,6 @@ defineExpose({
 
 .dark-theme .clip-region {
   background: rgba(0, 217, 255, 0.15);
-  border-color: #00d9ff;
 }
 
 .dark-theme .clip-region:hover {
@@ -1288,21 +1293,20 @@ defineExpose({
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 16px;
-  height: 32px;
-  background: #409eff;
+  width: var(--space-base);
+  height: var(--space-2xl);
+  background: var(--color-primary);
   border-radius: 3px;
   cursor: ew-resize;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--bg-card-solid);
   opacity: 0;
   transition: opacity 0.2s;
 }
 
 .dark-theme .clip-handle {
-  background: #00d9ff;
   color: #1a1a1a;
 }
 
@@ -1318,18 +1322,17 @@ defineExpose({
   top: -22px;
   left: 50%;
   transform: translateX(-50%);
-  background: #409eff;
-  color: white;
-  padding: 1px 8px;
+  background: var(--color-primary);
+  color: var(--bg-card-solid);
+  padding: 1px var(--space-sm);
   border-radius: 3px;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   white-space: nowrap;
   opacity: 0;
   transition: opacity 0.2s;
 }
 
 .dark-theme .clip-duration-label {
-  background: #00d9ff;
   color: #1a1a1a;
 }
 
@@ -1343,42 +1346,30 @@ defineExpose({
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 8px 0 0;
-  font-size: 12px;
+  padding: var(--space-sm) 0 0;
+  font-size: var(--font-size-sm);
 }
 
 .time-label {
-  color: #64748b;
-}
-
-.dark-theme .time-label {
-  color: #9e9e9e;
+  color: var(--color-text-secondary);
 }
 
 .time-value {
   font-family: 'Courier New', monospace;
-  color: #303133;
-  font-weight: 500;
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
 
   &.highlight {
-    color: #409eff;
-    font-weight: 600;
-  }
-}
-
-.dark-theme .time-value {
-  color: #e0e0e0;
-
-  &.highlight {
-    color: #00d9ff;
+    color: var(--color-primary);
+    font-weight: var(--font-weight-semibold);
   }
 }
 </style>
 
 <style scoped>
 .pending-badge {
-  color: #e6a23c;
+  color: var(--color-warning);
   margin-left: 2px;
-  font-size: 10px;
+  font-size: var(--font-size-xs);
 }
 </style>

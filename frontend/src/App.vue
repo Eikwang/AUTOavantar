@@ -50,86 +50,23 @@
             </div>
           </div>
           <div class="header-right">
-            <!-- 动态导航按钮 -->
-            <template v-if="currentRoute === 'Dashboard'">
-              <el-button type="success" plain @click="$router.push('/smart-cut')">
-                <el-icon><Scissor /></el-icon>
-                智能裁剪
-              </el-button>
-              <el-button type="primary" plain @click="$router.push('/materials')">
-                <el-icon><Collection /></el-icon>
-                素材库
-              </el-button>
-              <el-button type="info" plain @click="$router.push('/settings')">
-                <el-icon><Setting /></el-icon>
-                设置
-              </el-button>
-            </template>
+            <!-- 统一导航 -->
+            <nav class="nav-links">
+              <router-link
+                v-for="item in navItems"
+                :key="item.route"
+                :to="item.route"
+                class="nav-link"
+                :class="{ 'is-active': currentRoute === item.name }"
+              >
+                <el-icon><component :is="item.icon" /></el-icon>
+                {{ item.label }}
+              </router-link>
+            </nav>
 
-            <template v-else-if="currentRoute === 'Materials'">
-              <el-button type="primary" plain @click="$router.push('/')">
-                <el-icon><HomeFilled /></el-icon>
-                主页
-              </el-button>
-              <el-button type="success" plain @click="$router.push('/smart-cut')">
-                <el-icon><Scissor /></el-icon>
-                智能裁剪
-              </el-button>
-              <el-button type="info" plain @click="$router.push('/settings')">
-                <el-icon><Setting /></el-icon>
-                设置
-              </el-button>
-            </template>
-
-            <template v-else-if="currentRoute === 'Settings'">
-              <el-button type="primary" plain @click="$router.push('/')">
-                <el-icon><HomeFilled /></el-icon>
-                主页
-              </el-button>
-              <el-button type="success" plain @click="$router.push('/smart-cut')">
-                <el-icon><Scissor /></el-icon>
-                智能裁剪
-              </el-button>
-              <el-button type="info" plain @click="$router.push('/materials')">
-                <el-icon><Collection /></el-icon>
-                素材库
-              </el-button>
-            </template>
-
-            <template v-else-if="currentRoute === 'SmartCut'">
-              <el-button type="primary" plain @click="$router.push('/')">
-                <el-icon><HomeFilled /></el-icon>
-                主页
-              </el-button>
-              <el-button type="info" plain @click="$router.push('/materials')">
-                <el-icon><Collection /></el-icon>
-                素材库
-              </el-button>
-              <el-button type="info" plain @click="$router.push('/settings')">
-                <el-icon><Setting /></el-icon>
-                设置
-              </el-button>
-            </template>
-
-            <template v-else>
-              <!-- 其他页面显示主页和素材库 -->
-              <el-button type="primary" plain @click="$router.push('/')">
-                <el-icon><HomeFilled /></el-icon>
-                主页
-              </el-button>
-              <el-button type="success" plain @click="$router.push('/smart-cut')">
-                <el-icon><Scissor /></el-icon>
-                智能裁剪
-              </el-button>
-              <el-button type="info" plain @click="$router.push('/materials')">
-                <el-icon><Collection /></el-icon>
-                素材库
-              </el-button>
-            </template>
-            
             <!-- 主题切换图标 -->
-            <el-button 
-              circle 
+            <el-button
+              circle
               class="theme-toggle-btn"
               @click="toggleTheme"
               :title="isDarkTheme ? '切换到亮色主题' : '切换到暗色主题'"
@@ -139,7 +76,7 @@
                 <Moon v-else />
               </el-icon>
             </el-button>
-            
+
             <el-badge :value="pendingTasks" class="task-badge" v-if="pendingTasks > 0">
               <el-icon size="20"><Bell /></el-icon>
             </el-badge>
@@ -195,6 +132,14 @@ import UpdateDialog from '@/components/UpdateDialog.vue'
 
 const route = useRoute()
 const taskStore = useTaskStore()
+
+// 统一导航项
+const navItems = [
+  { name: 'Dashboard', route: '/', label: '首页', icon: HomeFilled },
+  { name: 'SmartCut', route: '/smart-cut', label: '智能裁剪', icon: Scissor },
+  { name: 'Materials', route: '/materials', label: '素材库', icon: Collection },
+  { name: 'Settings', route: '/settings', label: '设置', icon: Setting },
+]
 
 // 后端就绪状态
 const isBackendReady = ref(false)
@@ -484,12 +429,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e4e7ed 100%);
-  z-index: 9999;
+  background: var(--bg-page-gradient);
+  z-index: var(--z-loading);
 }
 
 .dark-theme.loading-screen {
-  background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+  background: var(--bg-page-gradient);
 }
 
 .loading-content {
@@ -518,49 +463,49 @@ onUnmounted(() => {
 }
 
 .loading-title {
-  font-size: 32px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 32px;
+  font-size: var(--font-size-5xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-2xl);
 }
 
 .dark-theme .loading-title {
-  color: #e6edf3;
+  color: var(--color-text-primary);
 }
 
 .loading-title .highlight {
-  background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+  background: var(--brand-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .loading-spinner {
-  margin-bottom: 24px;
-  color: #409EFF;
+  margin-bottom: var(--space-xl);
+  color: var(--color-primary);
 }
 
 .dark-theme .loading-spinner {
-  color: #00d9ff;
+  color: var(--color-primary);
 }
 
 .loading-text {
-  font-size: 16px;
-  color: #606266;
-  margin-bottom: 8px;
+  font-size: var(--font-size-lg);
+  color: var(--color-text-regular);
+  margin-bottom: var(--space-sm);
 }
 
 .dark-theme .loading-text {
-  color: #8b949e;
+  color: var(--color-text-regular);
 }
 
 .loading-hint {
-  font-size: 14px;
-  color: #909399;
+  font-size: var(--font-size-base);
+  color: var(--color-text-secondary);
 }
 
 .dark-theme .loading-hint {
-  color: #6e7681;
+  color: var(--color-text-secondary);
 }
 
 .layout-container {
@@ -571,7 +516,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   cursor: pointer;
-  transition: opacity 0.3s;
+  transition: opacity var(--transition-normal);
 }
 
 .logo:hover {
@@ -581,88 +526,119 @@ onUnmounted(() => {
 .logo-icon {
   width: 40px;
   height: 40px;
-  margin-right: 12px;
+  margin-right: var(--space-md);
 }
 
 .logo-text {
-  color: #303133;
-  font-size: 20px;
-  font-weight: 600;
+  color: var(--color-text-primary);
+  font-size: var(--font-size-2xl);
+  font-weight: var(--font-weight-semibold);
   white-space: nowrap;
 }
 
 .logo-text .highlight {
-  background: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+  background: var(--brand-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .main-container {
-  background-color: #f5f7fa;
-  transition: background-color 0.3s ease;
+  background-color: var(--bg-page);
+  transition: background-color var(--transition-normal);
 }
 
 .header {
-  background-color: #fff;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  background-color: var(--bg-card-solid);
+  box-shadow: var(--shadow-md);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 30px;
-  height: 64px;
-  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+  padding: 0 var(--space-3xl);
+  height: var(--header-height);
+  transition: background-color var(--transition-normal), box-shadow var(--transition-normal);
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: var(--space-sm);
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-regular);
+  text-decoration: none;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.nav-link:hover {
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+}
+
+.nav-link.is-active {
+  color: var(--color-primary);
+  background: var(--color-primary-bg);
+  font-weight: var(--font-weight-semibold);
 }
 
 .theme-toggle-btn {
-  margin-left: 10px;
+  margin-left: var(--space-sm);
 }
 
 .task-badge {
   cursor: pointer;
-  margin-left: 10px;
+  margin-left: var(--space-sm);
 }
 
 .main-content {
-  padding: 20px;
+  padding: var(--space-lg);
   overflow-y: auto;
-  min-height: calc(100vh - 64px - 40px);
+  min-height: calc(100vh - var(--header-height) - var(--footer-height));
 }
 
 .footer {
-  background-color: #fff;
+  background-color: var(--bg-card-solid);
   text-align: center;
-  color: #909399;
-  font-size: 12px;
-  line-height: 40px;
-  border-top: 1px solid #e4e7ed;
-  transition: background-color 0.3s ease, border-color 0.3s ease;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: var(--footer-height);
+  border-top: 1px solid var(--color-border-strong);
+  transition: background-color var(--transition-normal), border-color var(--transition-normal);
 }
 
 /* 暗色主题样式 */
 .dark-theme .main-container {
-  background-color: #0d1117;
+  background-color: var(--bg-page);
 }
 
 .dark-theme .header {
-  background-color: #161b22;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  background-color: var(--bg-card-solid);
+  box-shadow: var(--shadow-md);
 }
 
 .dark-theme .logo-text {
-  color: #e6edf3;
+  color: var(--color-text-primary);
 }
 
 .dark-theme .footer {
-  background-color: #161b22;
-  color: #8b949e;
-  border-top-color: #30363d;
+  background-color: var(--bg-card-solid);
+  color: var(--color-text-regular);
+  border-top-color: var(--color-border-strong);
 }
 
 /* 暗色主题下的Element Plus对话框样式 */

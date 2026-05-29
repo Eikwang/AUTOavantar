@@ -1,4 +1,162 @@
-/* 全局样式重置 */
+/* ==================== AUTOavantar 设计变量系统 ==================== */
+
+:root {
+  /* --- 主色 --- */
+  --color-primary: #409EFF;
+  --color-primary-light: #66b1ff;
+  --color-primary-dark: #337ecc;
+  --color-primary-bg: rgba(64, 158, 255, 0.05);
+
+  /* --- 功能色 --- */
+  --color-success: #67c23a;
+  --color-success-light: #85ce61;
+  --color-success-dark: #5daf34;
+  --color-warning: #e6a23c;
+  --color-danger: #f56c6c;
+  --color-danger-light: #f78989;
+  --color-info: #909399;
+
+  /* --- 品牌渐变 --- */
+  --brand-gradient: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+  --brand-color-start: #00d9ff;
+  --brand-color-end: #00ff88;
+
+  /* --- 文本色 --- */
+  --color-text-primary: #303133;
+  --color-text-regular: #606266;
+  --color-text-secondary: #909399;
+  --color-text-placeholder: #c0c4cc;
+  --color-text-disabled: #c0c4cc;
+
+  /* --- 背景色 --- */
+  --bg-page: #f5f7fa;
+  --bg-page-gradient: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 50%, #eef2f6 100%);
+  --bg-card: rgba(255, 255, 255, 0.9);
+  --bg-card-solid: #fff;
+  --bg-card-hover: rgba(255, 255, 255, 0.95);
+  --bg-elevated: rgba(255, 255, 255, 0.6);
+  --bg-muted: #f5f7fa;
+  --bg-dark-muted: rgba(0, 0, 0, 0.02);
+
+  /* --- 边框色 --- */
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-light: rgba(0, 0, 0, 0.06);
+  --color-border-strong: #e4e7ed;
+  --color-divider: #e4e7ed;
+
+  /* --- 阴影 --- */
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.15);
+
+  /* --- 圆角 --- */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-badge: 12px;
+
+  /* --- 间距 (8px base scale) --- */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-base: 16px;
+  --space-lg: 20px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+  --space-3xl: 40px;
+  --space-4xl: 48px;
+
+  /* --- 字体 --- */
+  --font-family: 'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
+  --font-mono: 'Consolas', 'Monaco', 'Courier New', monospace;
+
+  /* --- 字号 --- */
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-md: 15px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-2xl: 20px;
+  --font-size-3xl: 24px;
+  --font-size-4xl: 28px;
+  --font-size-5xl: 32px;
+
+  /* --- 字重 --- */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* --- 行高 --- */
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.6;
+
+  /* --- 布局 --- */
+  --header-height: 64px;
+  --footer-height: 40px;
+  --content-max-width: 1400px;
+  --sidebar-width: 280px;
+
+  /* --- 过渡 --- */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.3s ease;
+  --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* --- z-index --- */
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-overlay: 300;
+  --z-modal: 400;
+  --z-loading: 9999;
+}
+
+/* ==================== 暗色主题变量 ==================== */
+body.dark-theme {
+  --color-primary: #00d9ff;
+  --color-primary-light: #33e5ff;
+  --color-primary-dark: #00b8d4;
+  --color-primary-bg: rgba(0, 217, 255, 0.05);
+
+  --color-success: #00ff88;
+  --color-success-light: #33ff9e;
+  --color-success-dark: #00cc6a;
+  --color-warning: #f0c040;
+  --color-danger: #ff5252;
+  --color-info: #8b949e;
+
+  --brand-gradient: linear-gradient(135deg, #00d9ff 0%, #00ff88 100%);
+
+  --color-text-primary: #e6edf3;
+  --color-text-regular: #8b949e;
+  --color-text-secondary: #6e7681;
+  --color-text-placeholder: #484f58;
+  --color-text-disabled: #484f58;
+
+  --bg-page: #0d1117;
+  --bg-page-gradient: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #1a1f26 100%);
+  --bg-card: rgba(255, 255, 255, 0.03);
+  --bg-card-solid: #161b22;
+  --bg-card-hover: rgba(255, 255, 255, 0.06);
+  --bg-elevated: rgba(255, 255, 255, 0.05);
+  --bg-muted: #1a1f26;
+  --bg-dark-muted: rgba(255, 255, 255, 0.02);
+
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-light: rgba(255, 255, 255, 0.06);
+  --color-border-strong: #30363d;
+  --color-divider: #30363d;
+
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 2px 12px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+
+/* ==================== 全局重置 ==================== */
 * {
   margin: 0;
   padding: 0;
@@ -6,165 +164,49 @@
 }
 
 body {
-  font-family: 'Helvetica Neue', Arial, sans-serif;
-  font-size: 16px;
-  line-height: 1.5;
-  color: #333;
-  background-color: #f5f5f5;
+  font-family: var(--font-family);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
+  background-color: var(--bg-page);
 }
 
-/* 容器样式 */
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 20px;
-}
-
-/* 标题样式 */
 h1, h2, h3, h4, h5, h6 {
-  font-weight: 600;
-  margin-bottom: 1rem;
-  color: #2c3e50;
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: var(--space-base);
+  color: var(--color-text-primary);
 }
 
-/* 按钮样式 */
-.btn {
-  display: inline-block;
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.btn-primary {
-  background-color: #3498db;
-  color: white;
-}
-
-.btn-primary:hover {
-  background-color: #2980b9;
-}
-
-.btn-secondary {
-  background-color: #95a5a6;
-  color: white;
-}
-
-.btn-secondary:hover {
-  background-color: #7f8c8d;
-}
-
-.btn-danger {
-  background-color: #e74c3c;
-  color: white;
-}
-
-.btn-danger:hover {
-  background-color: #c0392b;
-}
-
-/* 卡片样式 */
-.card {
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 20px;
-  margin-bottom: 20px;
-}
-
-/* 表单样式 */
-.form-group {
-  margin-bottom: 15px;
-}
-
-.form-label {
-  display: block;
-  margin-bottom: 5px;
-  font-weight: 500;
-  color: #555;
-}
-
-.form-control {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 14px;
-  transition: border-color 0.3s ease;
-}
-
-.form-control:focus {
-  outline: none;
-  border-color: #3498db;
-  box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
-}
-
-/* 列表样式 */
-.list-group {
-  list-style: none;
-}
-
-.list-group-item {
-  padding: 12px 16px;
-  border-bottom: 1px solid #eee;
-}
-
-.list-group-item:last-child {
-  border-bottom: none;
-}
-
-/* 加载状态 */
-.loading {
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  border: 2px solid #f3f3f3;
-  border-top: 2px solid #3498db;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-/* 错误提示 */
-.error-message {
-  color: #e74c3c;
-  font-size: 12px;
-  margin-top: 5px;
-}
-
-/* 成功提示 */
-.success-message {
-  color: #27ae60;
-  font-size: 12px;
-  margin-top: 5px;
-}
-
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .container {
-    padding: 0 10px;
-  }
-
-  .card {
-    padding: 15px;
-  }
-}
-
-/* 页面不可见时暂停所有动画 */
+/* ==================== 页面不可见时暂停动画 ==================== */
 .page-hidden,
 .page-hidden * {
   animation-play-state: paused !important;
   transition: none !important;
 }
 
-/* 页面不可见时隐藏进度条流动效果 */
 .page-hidden .el-progress-bar__inner::after {
   animation: none !important;
+}
+
+/* ==================== 通用页面标题 ==================== */
+.page-title {
+  font-size: var(--font-size-4xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-xl);
+  line-height: var(--line-height-tight);
+}
+
+/* ==================== 通用卡片 ==================== */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-normal), border-color var(--transition-normal);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
 }
