@@ -55,7 +55,7 @@
                     <el-icon><VideoCamera /></el-icon>
                     <span class="video-name" :title="taskForm.openingVideo.name">{{ taskForm.openingVideo.name }}</span>
                     <div class="video-preview">
-                      <video :src="'/api/files/' + taskForm.openingVideo.path + (taskForm.openingVideo.timestamp ? '?t=' + taskForm.openingVideo.timestamp : '')" controls class="preview-video" style="max-width:200px;object-fit:contain"></video>
+                      <video :src="'/api/files/' + taskForm.openingVideo.path + (taskForm.openingVideo.timestamp ? '?t=' + taskForm.openingVideo.timestamp : '')" controls class="preview-video"></video>
                     </div>
                   </div>
                   <div class="video-actions">
@@ -81,39 +81,45 @@
             <!-- 循环视频 -->
             <el-form-item label="循环视频">
               <div class="video-upload-section">
-                <div
-                  v-for="(video, index) in taskForm.loopVideos"
-                  :key="index"
-                  class="video-item"
-                >
+                <div class="video-grid-2col">
+                  <div
+                    v-for="(video, index) in taskForm.loopVideos"
+                    :key="index"
+                    class="video-item"
+                  >
                   <div class="video-info">
                     <el-icon><VideoCamera /></el-icon>
                     <span class="video-name" :title="video.name">{{ video.name }}</span>
                     <div class="video-preview">
-                      <video :src="'/api/files/' + video.path + (video.timestamp ? '?t=' + video.timestamp : '')" controls class="preview-video" style="max-width:640px;object-fit:contain"></video>
+                      <video :src="'/api/files/' + video.path + (video.timestamp ? '?t=' + video.timestamp : '')" controls class="preview-video"></video>
                     </div>
                   </div>
                   <div class="video-actions">
-                    <el-button type="warning" link @click="openClipDialog('loop', video, 'video')">
-                      <el-icon><Scissor /></el-icon> 剪辑
-                    </el-button>
-                    <el-select v-model="video.emotion" placeholder="选择情绪" size="small" class="emotion-select">
-                      <el-option label="开心" value="happy" />
-                      <el-option label="生气" value="angry" />
-                      <el-option label="难过" value="sad" />
-                      <el-option label="害怕" value="fear" />
-                      <el-option label="厌恶" value="disgust" />
-                      <el-option label="低落" value="depressed" />
-                      <el-option label="惊喜" value="surprised" />
-                      <el-option label="冷静" value="calm" />
-                    </el-select>
-                    <el-button type="primary" link @click="analyzeFace('loop', index)" :loading="faceAnalysisLoading[video?.path] && faceAnalysisLoading[video?.path] !== 'completed'" :disabled="(faceAnalysisLoading[video?.path] && faceAnalysisLoading[video?.path] !== 'completed') || analyzedVideoPaths[video?.path]">
-                      <el-icon><Search /></el-icon> {{ faceAnalysisLoading[video?.path] === 'completed' ? '已完成' : (faceAnalysisLoading[video?.path] || analyzedVideoPaths[video?.path] ? '分析中...' : '面部分析') }}
-                    </el-button>
-                    <el-button type="danger" link @click="removeLoopVideo(index)">
-                      <el-icon><Delete /></el-icon> 移除
-                    </el-button>
+                    <div class="video-actions-left">
+                      <el-button type="warning" plain size="small" @click="openClipDialog('loop', video, 'video')">
+                        剪辑
+                      </el-button>
+                      <el-button type="primary" plain size="small" @click="analyzeFace('loop', index)" :loading="faceAnalysisLoading[video?.path] && faceAnalysisLoading[video?.path] !== 'completed'" :disabled="(faceAnalysisLoading[video?.path] && faceAnalysisLoading[video?.path] !== 'completed') || analyzedVideoPaths[video?.path]">
+                        {{ faceAnalysisLoading[video?.path] === 'completed' ? '已完成' : (faceAnalysisLoading[video?.path] || analyzedVideoPaths[video?.path] ? '分析中...' : '面部分析') }}
+                      </el-button>
+                      <el-button type="danger" plain size="small" @click="removeLoopVideo(index)">
+                        移除
+                      </el-button>
+                    </div>
+                    <div class="video-actions-right">
+                      <el-select v-model="video.emotion" placeholder="选择情绪" size="small" class="emotion-select">
+                        <el-option label="开心" value="happy" />
+                        <el-option label="生气" value="angry" />
+                        <el-option label="难过" value="sad" />
+                        <el-option label="害怕" value="fear" />
+                        <el-option label="厌恶" value="disgust" />
+                        <el-option label="低落" value="depressed" />
+                        <el-option label="惊喜" value="surprised" />
+                        <el-option label="冷静" value="calm" />
+                      </el-select>
+                    </div>
                   </div>
+                </div>
                 </div>
                 <div v-if="taskForm.loopVideos.length < 5" class="upload-buttons">
                   <el-button type="primary" plain @click="uploadLocalVideo('loop')">
@@ -131,7 +137,7 @@
                     <el-icon><VideoCamera /></el-icon>
                     <span class="video-name" :title="taskForm.endingVideo.name">{{ taskForm.endingVideo.name }}</span>
                     <div class="video-preview">
-                      <video :src="'/api/files/' + taskForm.endingVideo.path + (taskForm.endingVideo.timestamp ? '?t=' + taskForm.endingVideo.timestamp : '')" controls class="preview-video" style="max-width:200px;object-fit:contain"></video>
+                      <video :src="'/api/files/' + taskForm.endingVideo.path + (taskForm.endingVideo.timestamp ? '?t=' + taskForm.endingVideo.timestamp : '')" controls class="preview-video"></video>
                     </div>
                   </div>
                   <div class="video-actions">
@@ -173,34 +179,40 @@
                     />
                   </el-select>
                 </div>
-                <div
-                  v-for="(video, index) in taskForm.sceneVideos"
-                  :key="index"
-                  class="video-item"
-                >
+                <div class="video-grid-2col">
+                  <div
+                    v-for="(video, index) in taskForm.sceneVideos"
+                    :key="index"
+                    class="video-item"
+                  >
                   <div class="video-info">
                     <el-icon><VideoCamera /></el-icon>
                     <span class="video-name" :title="video.name">{{ video.name }}</span>
                     <div class="video-preview">
-                      <video :src="'/api/files/' + video.path + (video.timestamp ? '?t=' + video.timestamp : '')" controls class="preview-video" style="max-width:640px;object-fit:contain"></video>
+                      <video :src="'/api/files/' + video.path + (video.timestamp ? '?t=' + video.timestamp : '')" controls class="preview-video"></video>
                     </div>
                   </div>
                   <div class="video-actions">
-                    <el-button type="warning" link @click="openClipDialog('scene', video, 'video')">
-                      <el-icon><Scissor /></el-icon> 剪辑
-                    </el-button>
-                    <el-select v-model="video.scene" placeholder="选择场景" size="small" class="scene-select">
-                      <el-option
-                        v-for="tag in sceneTagOptions"
-                        :key="tag.id"
-                        :label="tag.name"
-                        :value="tag.name"
-                      />
-                    </el-select>
-                    <el-button type="danger" link @click="removeSceneVideo(index)">
-                      <el-icon><Delete /></el-icon> 移除
-                    </el-button>
+                    <div class="video-actions-left">
+                      <el-button type="warning" plain size="small" @click="openClipDialog('scene', video, 'video')">
+                        剪辑
+                      </el-button>
+                      <el-button type="danger" plain size="small" @click="removeSceneVideo(index)">
+                        移除
+                      </el-button>
+                    </div>
+                    <div class="video-actions-right">
+                      <el-select v-model="video.scene" placeholder="选择场景" size="small" class="scene-select">
+                        <el-option
+                          v-for="tag in sceneTagOptions"
+                          :key="tag.id"
+                          :label="tag.name"
+                          :value="tag.name"
+                        />
+                      </el-select>
+                    </div>
                   </div>
+                </div>
                 </div>
                 <div v-if="taskForm.sceneVideos.length < 5" class="upload-buttons">
                   <el-button type="primary" plain @click="uploadLocalVideo('scene')">
@@ -209,7 +221,7 @@
                 </div>
               </div>
             </el-form-item>
-            
+
             <!-- 视频参数 -->
             <div class="video-params">
               <el-row :gutter="20">
@@ -278,123 +290,108 @@
             
             <!-- 双人模式音频 -->
             <template v-else>
-              <el-form-item label="左边说话人" prop="leftAudio" required>
-                <div class="audio-upload-section" :key="`left-${audioRefreshKey}`">
-                  <div v-if="taskForm.leftAudio" class="audio-item">
-                    <div class="audio-info">
-                      <el-icon><Microphone /></el-icon>
-                      <span :title="taskForm.leftAudio.name">{{ taskForm.leftAudio.name }}</span>
-                      <div class="audio-preview">
-                        <audio :src="'/api/files/' + taskForm.leftAudio.path + (taskForm.leftAudio.timestamp ? '?t=' + taskForm.leftAudio.timestamp : '')" controls class="preview-audio"></audio>
+              <el-row :gutter="24">
+                <!-- 左边说话人 -->
+                <el-col :span="12">
+                  <el-form-item label="左边说话人" prop="leftAudio" required>
+                    <div class="audio-upload-section dual-audio-col" :key="`left-${audioRefreshKey}`">
+                      <div v-if="taskForm.leftAudio" class="audio-item">
+                        <div class="audio-info">
+                          <el-icon><Microphone /></el-icon>
+                          <span :title="taskForm.leftAudio.name">{{ taskForm.leftAudio.name }}</span>
+                          <div class="audio-preview">
+                            <audio :src="'/api/files/' + taskForm.leftAudio.path + (taskForm.leftAudio.timestamp ? '?t=' + taskForm.leftAudio.timestamp : '')" controls class="preview-audio"></audio>
+                          </div>
+                        </div>
+                        <div class="audio-actions-left-btns">
+                          <el-button type="warning" plain size="small" @click="openClipDialog('left', taskForm.leftAudio, 'audio')">
+                            剪辑
+                          </el-button>
+                          <el-button type="primary" plain size="small" @click="denoiseAudio('left')">
+                            降噪增强
+                          </el-button>
+                          <el-button type="danger" plain size="small" @click="removeAudio('left')">
+                            移除
+                          </el-button>
+                        </div>
+                      </div>
+                      <div v-else class="upload-buttons">
+                        <el-button type="primary" plain @click="uploadLocalAudio('left')">
+                          <el-icon><Upload /></el-icon> 上传本地音频
+                        </el-button>
                       </div>
                     </div>
-                    <div class="audio-actions">
-                      <el-button type="warning" link @click="openClipDialog('left', taskForm.leftAudio, 'audio')">
-                        <el-icon><Scissor /></el-icon> 剪辑
-                      </el-button>
-                      <el-button type="primary" link @click="denoiseAudio('left')">
-                        <el-icon><MagicStick /></el-icon> 降噪增强
-                      </el-button>
-                      <el-button type="danger" link @click="removeAudio('left')">
-                        <el-icon><Delete /></el-icon> 移除
-                      </el-button>
-                    </div>
-                  </div>
-                  <div v-else class="upload-buttons">
-                    <el-button type="primary" plain @click="uploadLocalAudio('left')">
-                      <el-icon><Upload /></el-icon> 上传本地音频
-                    </el-button>
-                  </div>
-                </div>
-              </el-form-item>
-              
-              <el-form-item label="右边说话人" prop="rightAudio" required>
-                <div class="audio-upload-section" :key="`right-${audioRefreshKey}`">
-                  <div v-if="taskForm.rightAudio" class="audio-item">
-                    <div class="audio-info">
-                      <el-icon><Microphone /></el-icon>
-                      <span :title="taskForm.rightAudio.name">{{ taskForm.rightAudio.name }}</span>
-                      <div class="audio-preview">
-                        <audio :src="'/api/files/' + taskForm.rightAudio.path + (taskForm.rightAudio.timestamp ? '?t=' + taskForm.rightAudio.timestamp : '')" controls class="preview-audio"></audio>
+                  </el-form-item>
+                  <!-- 左边参数 -->
+                  <el-form-item label="语速">
+                    <el-slider v-model="taskForm.leftAudioParams.ttsSpeed" :min="0.8" :max="1.2" :step="0.02" />
+                    <div class="slider-value">{{ taskForm.leftAudioParams.ttsSpeed }}</div>
+                  </el-form-item>
+                  <el-form-item label="情感权重">
+                    <el-slider v-model="taskForm.leftAudioParams.ttsEmoWeight" :min="0.1" :max="1.2" :step="0.1" />
+                    <div class="slider-value">{{ taskForm.leftAudioParams.ttsEmoWeight }}</div>
+                  </el-form-item>
+                </el-col>
+                <!-- 右边说话人 -->
+                <el-col :span="12">
+                  <el-form-item label="右边说话人" prop="rightAudio" required>
+                    <div class="audio-upload-section dual-audio-col" :key="`right-${audioRefreshKey}`">
+                      <div v-if="taskForm.rightAudio" class="audio-item">
+                        <div class="audio-info">
+                          <el-icon><Microphone /></el-icon>
+                          <span :title="taskForm.rightAudio.name">{{ taskForm.rightAudio.name }}</span>
+                          <div class="audio-preview">
+                            <audio :src="'/api/files/' + taskForm.rightAudio.path + (taskForm.rightAudio.timestamp ? '?t=' + taskForm.rightAudio.timestamp : '')" controls class="preview-audio"></audio>
+                          </div>
+                        </div>
+                        <div class="audio-actions-left-btns">
+                          <el-button type="warning" plain size="small" @click="openClipDialog('right', taskForm.rightAudio, 'audio')">
+                            剪辑
+                          </el-button>
+                          <el-button type="primary" plain size="small" @click="denoiseAudio('right')">
+                            降噪增强
+                          </el-button>
+                          <el-button type="danger" plain size="small" @click="removeAudio('right')">
+                            移除
+                          </el-button>
+                        </div>
+                      </div>
+                      <div v-else class="upload-buttons">
+                        <el-button type="primary" plain @click="uploadLocalAudio('right')">
+                          <el-icon><Upload /></el-icon> 上传本地音频
+                        </el-button>
                       </div>
                     </div>
-                    <div class="audio-actions">
-                      <el-button type="warning" link @click="openClipDialog('right', taskForm.rightAudio, 'audio')">
-                        <el-icon><Scissor /></el-icon> 剪辑
-                      </el-button>
-                      <el-button type="primary" link @click="denoiseAudio('right')">
-                        <el-icon><MagicStick /></el-icon> 降噪增强
-                      </el-button>
-                      <el-button type="danger" link @click="removeAudio('right')">
-                        <el-icon><Delete /></el-icon> 移除
-                      </el-button>
-                    </div>
-                  </div>
-                  <div v-else class="upload-buttons">
-                    <el-button type="primary" plain @click="uploadLocalAudio('right')">
-                      <el-icon><Upload /></el-icon> 上传本地音频
-                    </el-button>
-                  </div>
-                </div>
-              </el-form-item>
+                  </el-form-item>
+                  <!-- 右边参数 -->
+                  <el-form-item label="语速">
+                    <el-slider v-model="taskForm.rightAudioParams.ttsSpeed" :min="0.8" :max="1.2" :step="0.02" />
+                    <div class="slider-value">{{ taskForm.rightAudioParams.ttsSpeed }}</div>
+                  </el-form-item>
+                  <el-form-item label="情感权重">
+                    <el-slider v-model="taskForm.rightAudioParams.ttsEmoWeight" :min="0.1" :max="1.2" :step="0.1" />
+                    <div class="slider-value">{{ taskForm.rightAudioParams.ttsEmoWeight }}</div>
+                  </el-form-item>
+                </el-col>
+              </el-row>
             </template>
-            
-            <!-- 音频参数 -->
-            <div class="audio-params">
-              <template v-if="!taskForm.videoParams.dualMode">
-                <el-row :gutter="20">
-                  <el-col :span="12">
-                    <el-form-item label="语速">
-                      <el-slider v-model="taskForm.audioParams.ttsSpeed" :min="0.8" :max="1.2" :step="0.02" />
-                      <div class="slider-value">{{ taskForm.audioParams.ttsSpeed }}</div>
-                    </el-form-item>
-                  </el-col>
-                  <el-col :span="12">
-                    <el-form-item label="情感权重">
-                      <el-slider v-model="taskForm.audioParams.ttsEmoWeight" :min="0.1" :max="1.2" :step="0.1" />
-                      <div class="slider-value">{{ taskForm.audioParams.ttsEmoWeight }}</div>
-                    </el-form-item>
-                  </el-col>
-                </el-row>
-              </template>
-              <template v-else>
-                <!-- 左边说话人参数 -->
-                <div class="speaker-params">
-                  <h4>左边说话人</h4>
-                  <el-row :gutter="20">
-                    <el-col :span="12">
-                      <el-form-item label="语速">
-                        <el-slider v-model="taskForm.leftAudioParams.ttsSpeed" :min="0.8" :max="1.2" :step="0.02" />
-                        <div class="slider-value">{{ taskForm.leftAudioParams.ttsSpeed }}</div>
-                      </el-form-item>
-                    </el-col>
-                    <el-col :span="12">
-                      <el-form-item label="情感权重">
-                        <el-slider v-model="taskForm.leftAudioParams.ttsEmoWeight" :min="0.1" :max="1.2" :step="0.1" />
-                        <div class="slider-value">{{ taskForm.leftAudioParams.ttsEmoWeight }}</div>
-                      </el-form-item>
-                    </el-col>
-                  </el-row>
-                </div>
-                <!-- 右边说话人参数 -->
-                <div class="speaker-params">
-                  <h4>右边说话人</h4>
-                  <el-row :gutter="20">
-                    <el-col :span="12">
-                      <el-form-item label="语速">
-                        <el-slider v-model="taskForm.rightAudioParams.ttsSpeed" :min="0.8" :max="1.2" :step="0.02" />
-                        <div class="slider-value">{{ taskForm.rightAudioParams.ttsSpeed }}</div>
-                      </el-form-item>
-                    </el-col>
-                    <el-col :span="12">
-                      <el-form-item label="情感权重">
-                        <el-slider v-model="taskForm.rightAudioParams.ttsEmoWeight" :min="0.1" :max="1.2" :step="0.1" />
-                        <div class="slider-value">{{ taskForm.rightAudioParams.ttsEmoWeight }}</div>
-                      </el-form-item>
-                    </el-col>
-                  </el-row>
-                </div>
-              </template>
+
+            <!-- 音频参数（仅单人模式） -->
+            <div class="audio-params" v-if="!taskForm.videoParams.dualMode">
+              <el-row :gutter="20">
+                <el-col :span="12">
+                  <el-form-item label="语速">
+                    <el-slider v-model="taskForm.audioParams.ttsSpeed" :min="0.8" :max="1.2" :step="0.02" />
+                    <div class="slider-value">{{ taskForm.audioParams.ttsSpeed }}</div>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="12">
+                  <el-form-item label="情感权重">
+                    <el-slider v-model="taskForm.audioParams.ttsEmoWeight" :min="0.1" :max="1.2" :step="0.1" />
+                    <div class="slider-value">{{ taskForm.audioParams.ttsEmoWeight }}</div>
+                  </el-form-item>
+                </el-col>
+              </el-row>
             </div>
           </el-card>
 
@@ -418,13 +415,20 @@
             
             <!-- 生成按钮 -->
             <el-form-item>
-              <el-button 
-                type="primary" 
+              <el-button
+                type="primary"
                 :loading="taskStore.isGeneratingScript"
                 @click="generateScript"
               >
                 <el-icon><MagicStick /></el-icon>
                 生成文案
+              </el-button>
+              <el-button
+                plain
+                @click="showScriptHistory"
+              >
+                <el-icon><Clock /></el-icon>
+                历史记录
               </el-button>
             </el-form-item>
             
@@ -462,66 +466,71 @@
             <!-- 转场效果设置 -->
             <el-form-item v-if="taskForm.postProcessing.includes('transition')" label="转场效果设置" class="transition-settings-wrapper">
               <div class="transition-settings-panel">
-                <!-- 转场分类 -->
-                <div class="setting-group">
-                  <div class="group-title">
-                    <el-icon><VideoPlay /></el-icon>
-                    <span>转场分类</span>
-                  </div>
-                  <div class="group-content">
-                    <div class="setting-item">
-                      <label class="item-label">分类</label>
-                      <el-select v-model="taskForm.transitionParams.type" placeholder="选择分类" class="type-select" @change="handleTransitionTypeChange">
-                        <el-option v-for="category in transitionCategories" :key="category" :label="category" :value="category" />
-                      </el-select>
+                <!-- 左侧：转场分类 -->
+                <div class="transition-col">
+                  <div class="setting-group">
+                    <div class="group-title">
+                      <el-icon><VideoPlay /></el-icon>
+                      <span>转场分类</span>
                     </div>
-                    <div class="setting-item">
-                      <label class="item-label">效果</label>
-                      <el-select v-model="taskForm.transitionParams.effect" placeholder="选择效果" class="effect-select" :disabled="taskForm.transitionParams.random">
-                        <el-option v-for="effect in currentTransitionEffects" :key="effect.value" :label="effect.name" :value="effect.value" />
-                      </el-select>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- 随机效果 -->
-                <div class="setting-group">
-                  <div class="group-title">
-                    <el-icon><MagicStick /></el-icon>
-                    <span>随机效果</span>
-                  </div>
-                  <div class="group-content">
-                    <div class="setting-item">
-                      <el-checkbox v-model="taskForm.transitionParams.random" @change="handleTransitionRandomChange">
-                        启用随机效果
-                      </el-checkbox>
-                    </div>
-                    <div class="setting-item" v-if="taskForm.transitionParams.random">
-                      <el-checkbox v-model="taskForm.transitionParams.randomAll">
-                        每次转场都随机（不勾选则整个视频统一使用一个随机效果）
-                      </el-checkbox>
+                    <div class="group-content">
+                      <div class="setting-item">
+                        <label class="item-label">分类</label>
+                        <el-select v-model="taskForm.transitionParams.type" placeholder="选择分类" class="type-select" @change="handleTransitionTypeChange">
+                          <el-option v-for="category in transitionCategories" :key="category" :label="category" :value="category" />
+                        </el-select>
+                      </div>
+                      <div class="setting-item">
+                        <label class="item-label">效果</label>
+                        <el-select v-model="taskForm.transitionParams.effect" placeholder="选择效果" class="effect-select" :disabled="taskForm.transitionParams.random">
+                          <el-option v-for="effect in currentTransitionEffects" :key="effect.value" :label="effect.name" :value="effect.value" />
+                        </el-select>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <!-- 持续时间 -->
-                <div class="setting-group">
-                  <div class="group-title">
-                    <el-icon><Clock /></el-icon>
-                    <span>转场时长</span>
+                <!-- 右侧：随机效果 + 转场时长 -->
+                <div class="transition-col">
+                  <!-- 随机效果 -->
+                  <div class="setting-group">
+                    <div class="group-title">
+                      <el-icon><MagicStick /></el-icon>
+                      <span>随机效果</span>
+                    </div>
+                    <div class="group-content">
+                      <div class="setting-item">
+                        <el-checkbox v-model="taskForm.transitionParams.random" @change="handleTransitionRandomChange">
+                          启用随机效果
+                        </el-checkbox>
+                      </div>
+                      <div class="setting-item" v-if="taskForm.transitionParams.random">
+                        <el-checkbox v-model="taskForm.transitionParams.randomAll">
+                          每次转场都随机（不勾选则整个视频统一使用一个随机效果）
+                        </el-checkbox>
+                      </div>
+                    </div>
                   </div>
-                  <div class="group-content">
-                    <div class="setting-item">
-                      <label class="item-label">时长</label>
-                      <el-slider
-                        v-model="taskForm.transitionParams.duration"
-                        :min="0.5"
-                        :max="5.0"
-                        :step="0.1"
-                        show-input
-                        class="duration-slider"
-                      />
-                      <span class="slider-unit">秒</span>
+
+                  <!-- 转场时长 -->
+                  <div class="setting-group">
+                    <div class="group-title">
+                      <el-icon><Clock /></el-icon>
+                      <span>转场时长</span>
+                    </div>
+                    <div class="group-content">
+                      <div class="setting-item">
+                        <label class="item-label">时长</label>
+                        <el-slider
+                          v-model="taskForm.transitionParams.duration"
+                          :min="0.5"
+                          :max="5.0"
+                          :step="0.1"
+                          show-input
+                          class="duration-slider"
+                        />
+                        <span class="slider-unit">秒</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -720,16 +729,17 @@
 
           <!-- 提交按钮 -->
           <div class="form-actions">
-            <el-button @click="goBack">取消</el-button>
-            <el-button 
+            <el-button size="large" @click="goBack">取消</el-button>
+            <el-button
               type="primary"
+              size="large"
               @click="submitTask(false)"
             >
               <el-icon><Plus /></el-icon>
               添加任务
             </el-button>
-            <el-button 
-              type="primary" 
+            <el-button
+              type="primary"
               size="large"
               :loading="taskStore.isCreating"
               @click="submitTask(true)"
@@ -1584,10 +1594,10 @@ const generateScript = async () => {
     ElMessage.warning('请输入文案主题')
     return
   }
-  
+
   const mode = taskForm.videoParams.dualMode ? 'dual' : 'single'
   const prompt = settingsStore.getPromptTemplate(mode)
-  
+
   try {
     const result = await taskStore.generateScript({
       topic: content,
@@ -1603,6 +1613,11 @@ const generateScript = async () => {
   } catch (error) {
     ElMessage.error('文案生成失败: ' + error.message)
   }
+}
+
+// 显示文案历史记录
+const showScriptHistory = () => {
+  ElMessage.info('历史记录功能开发中')
 }
 
 const isValidScriptJson = (content) => {
@@ -2226,6 +2241,7 @@ const handleTagGroupChange = async (groupId) => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  width: 100%;
 }
 
 .tag-group-selector {
@@ -2342,19 +2358,22 @@ const handleTagGroupChange = async (groupId) => {
   background: var(--bg-muted);
   border-radius: 8px;
   gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .video-info,
 .audio-info {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 10px;
   flex: 1;
   width: 100%;
 }
 
 .video-name {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--color-text-primary);
   white-space: nowrap;
@@ -2371,9 +2390,13 @@ const handleTagGroupChange = async (groupId) => {
 
 .preview-video {
   border: 1px solid var(--color-border-strong);
-  border-radius: 4px;
+  border-radius: 8px;
   display: block;
-  max-width: 100%;
+  width: 100%;
+  max-width: 280px;
+  aspect-ratio: 16/9;
+  object-fit: contain;
+  background: var(--bg-dark-muted);
 }
 
 .video-actions .el-select {
@@ -2386,7 +2409,7 @@ const handleTagGroupChange = async (groupId) => {
 }
 
 .audio-info span {
-  max-width: 200px;
+  max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2394,10 +2417,36 @@ const handleTagGroupChange = async (groupId) => {
 
 .video-actions {
   display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 8px;
+}
+
+.video-actions-left {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.video-actions-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.video-grid-2col {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .video-grid-2col {
+    grid-template-columns: 1fr;
+  }
 }
 
 .emotion-select,
@@ -2424,6 +2473,41 @@ const handleTagGroupChange = async (groupId) => {
   margin-bottom: 10px;
   font-size: 14px;
   font-weight: 500;
+}
+
+/* 双人模式音频并列布局 */
+.dual-audio-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.dual-audio-col .audio-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.audio-actions-left-btns {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.audio-preview {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.preview-audio {
+  width: 100%;
+  height: 40px;
+  border-radius: 4px;
 }
 
 .slider-value {
@@ -2679,6 +2763,8 @@ const handleTagGroupChange = async (groupId) => {
   border-radius: 12px;
   border: 1px solid var(--color-border-strong);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  max-width: 100%;
 }
 
 // 左侧样式设置区域
@@ -2768,8 +2854,9 @@ const handleTagGroupChange = async (groupId) => {
 
 // 右侧区域 - 上下布局
 .subtitle-right-section {
-  width: 280px;
-  flex-shrink: 0;
+  max-width: 280px;
+  flex: 1;
+  min-width: 200px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -2938,14 +3025,22 @@ const handleTagGroupChange = async (groupId) => {
 }
 
 .transition-settings-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 24px;
   padding: 20px;
   background: var(--bg-page-gradient);
   border-radius: 12px;
   border: 1px solid var(--color-border-strong);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.transition-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .type-select {
@@ -2970,6 +3065,7 @@ const handleTagGroupChange = async (groupId) => {
 // 响应式设计
 @media (max-width: 768px) {
   .transition-settings-panel {
+    grid-template-columns: 1fr;
     padding: 12px;
   }
 

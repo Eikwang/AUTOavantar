@@ -80,10 +80,10 @@
               </div>
               
               <!-- 音频播放器 -->
-              <audio 
+              <audio
                 v-if="item.path"
                 :ref="el => setAudioRef(el, item.id || item.bgm_id)"
-                :src="getFileUrl(item.path)"
+                :src="getFileUrl(item.path, item._ts)"
                 @play="handleAudioPlay(item)"
                 @pause="handleAudioPause(item)"
                 @ended="handleAudioEnded(item)"
@@ -237,13 +237,11 @@
               <div class="video-preview" v-if="createForm.opening_video">
                 <div class="video-preview-with-actions">
                   <video :src="getFileUrl(createForm.opening_video, createForm.opening_video_ts)" controls style="object-fit:contain" />
-                  <div class="video-clip-action">
-                    <el-button type="warning" size="small" @click="openClipDialog('opening', {path: createForm.opening_video, name: '开场视频'}, 'video')">
-                      <el-icon><Scissor /></el-icon> 剪辑
-                    </el-button>
-                  </div>
                 </div>
-                <div class="video-actions">
+                <div class="video-actions-row">
+                  <el-button type="warning" size="small" @click="openClipDialog('opening', {path: createForm.opening_video, name: '开场视频'}, 'video')">
+                    <el-icon><Scissor /></el-icon> 剪辑
+                  </el-button>
                   <el-button size="small" @click="analyzeFace(createForm.opening_video, 'opening')" :loading="faceAnalysisLoading[createForm.opening_video] && faceAnalysisLoading[createForm.opening_video] !== 'completed'" :disabled="(faceAnalysisLoading[createForm.opening_video] && faceAnalysisLoading[createForm.opening_video] !== 'completed') || analyzedVideoPaths[createForm.opening_video]">
                     <el-icon><Monitor /></el-icon> {{ faceAnalysisLoading[createForm.opening_video] === 'completed' ? '已完成' : (faceAnalysisLoading[createForm.opening_video] || analyzedVideoPaths[createForm.opening_video] ? '分析中...' : '面部分析') }}
                   </el-button>
@@ -266,15 +264,10 @@
                 </el-button>
                 <input type="file" ref="loopInput" accept="video/*" style="display:none" @change="handleVideoUpload($event, 'loop')" />
               </div>
-              <div class="video-list">
+              <div class="video-list loop-video-grid">
                 <div v-for="(video, index) in createForm.loop_videos" :key="index" class="video-item">
                   <div class="video-preview-with-actions">
                     <video :src="getFileUrl(video.path, video.timestamp)" controls style="object-fit:contain" />
-                    <div class="video-clip-action">
-                      <el-button type="warning" size="small" @click="openClipDialog('loop', video, 'video')">
-                        <el-icon><Scissor /></el-icon> 剪辑
-                      </el-button>
-                    </div>
                   </div>
                   <div class="video-info">
                     <el-select v-model="video.emotion" placeholder="选择情绪标签" size="small" class="emotion-select">
@@ -288,7 +281,10 @@
                       <el-option label="冷静" value="calm" />
                     </el-select>
                   </div>
-                  <div class="video-actions">
+                  <div class="video-actions-row">
+                    <el-button type="warning" size="small" @click="openClipDialog('loop', video, 'video')">
+                      <el-icon><Scissor /></el-icon> 剪辑
+                    </el-button>
                     <el-button size="small" @click="analyzeFace(video.path, 'loop')" :loading="faceAnalysisLoading[video.path] && faceAnalysisLoading[video.path] !== 'completed'" :disabled="(faceAnalysisLoading[video.path] && faceAnalysisLoading[video.path] !== 'completed') || analyzedVideoPaths[video.path]">
                       <el-icon><Monitor /></el-icon> {{ faceAnalysisLoading[video.path] === 'completed' ? '已完成' : (faceAnalysisLoading[video.path] || analyzedVideoPaths[video.path] ? '分析中...' : '面部分析') }}
                     </el-button>
@@ -409,17 +405,12 @@
                 </el-button>
                 <input type="file" ref="sceneInput" accept="video/*" style="display:none" @change="handleVideoUpload($event, 'scene')" />
               </div>
-              <div class="video-list">
+              <div class="video-list scene-video-grid">
                 <div v-for="(video, index) in createForm.scene_videos" :key="index" class="video-item scene">
                   <div class="video-preview-with-actions">
                     <video :src="getFileUrl(video.path, video.timestamp)" controls style="object-fit:contain" />
-                    <div class="video-clip-action">
-                      <el-button type="warning" size="small" @click="openClipDialog('scene', video, 'video')">
-                        <el-icon><Scissor /></el-icon> 剪辑
-                      </el-button>
-                    </div>
                   </div>
-                  <div class="video-info">
+                  <div class="video-actions-row scene-actions">
                     <el-select v-model="video.tag" placeholder="选择场景标签" size="small" class="scene-select">
                       <el-option
                         v-for="tag in sceneTagOptions"
@@ -428,8 +419,9 @@
                         :value="tag.name"
                       />
                     </el-select>
-                  </div>
-                  <div class="video-actions">
+                    <el-button type="warning" size="small" @click="openClipDialog('scene', video, 'video')">
+                      <el-icon><Scissor /></el-icon> 剪辑
+                    </el-button>
                     <el-button size="small" type="danger" @click="removeSceneVideo(index)">
                       <el-icon><Delete /></el-icon>
                     </el-button>
@@ -1845,8 +1837,9 @@ const openBgmClipDialog = () => {
 }
 
 // 音频剪辑完成处理
-const handleAudioClipped = (data) => {
+const handleAudioClipped = async (data) => {
   const ts = Date.now()
+  const clippedDuration = data.duration
 
   // 检查是否是BGM剪辑
   if (audioClipItem.value?.path === createForm.bgm_path) {
@@ -1857,24 +1850,19 @@ const handleAudioClipped = (data) => {
   if (createForm.audio_clips) {
     const clipIndex = createForm.audio_clips.findIndex(c => c.path === audioClipItem.value?.path)
     if (clipIndex !== -1) {
-      createForm.audio_clips[clipIndex] = { ...createForm.audio_clips[clipIndex], timestamp: ts }
+      createForm.audio_clips[clipIndex] = { ...createForm.audio_clips[clipIndex], timestamp: ts, duration: clippedDuration }
     }
   }
 
-  // 刷新素材列表
-  loadMaterials()
-
-  // 强制刷新音频播放器引用，添加时间戳防止缓存
-  if (audioClipPlayerRef.value) {
-    const audioEl = audioClipPlayerRef.value.$el?.querySelector?.('audio') ||
-                     audioClipPlayerRef.value.$el
-    if (audioEl) {
-      // 更新 src 添加时间戳
-      const currentSrc = audioEl.src
-      if (currentSrc) {
-        const separator = currentSrc.includes('?') ? '&' : '?'
-        audioEl.src = currentSrc + separator + 't=' + ts
-        audioEl.load()
+  // 先同步更新后端的 duration
+  if (audioClipItem.value) {
+    const itemId = audioClipItem.value.id || audioClipItem.value.bgm_id
+    const itemType = audioClipItem.value.bgm_id ? 'bgm' : 'audio'
+    if (itemId && clippedDuration) {
+      try {
+        await materialApi.update(itemId, { type: itemType, duration: clippedDuration })
+      } catch (e) {
+        console.warn('更新素材时长失败:', e)
       }
     }
   }
@@ -1883,14 +1871,17 @@ const handleAudioClipped = (data) => {
   showAudioClipDialog.value = false
   audioClipItem.value = null
 
-  // 强制页面所有音频元素重新加载
+  // 重新加载素材列表（后端已有最新duration）
+  await loadMaterials()
+
+  // 给刚加载的数据添加时间戳标记以破坏浏览器缓存
+  referenceAudios.value.forEach(a => { a._ts = ts })
+  bgms.value.forEach(b => { b._ts = ts })
+
+  // Vue 更新 DOM 后，强制刷新页面音频元素（卡片列表、编辑表单等）
   nextTick(() => {
-    document.querySelectorAll('.audio-upload-section audio, .video-section audio').forEach(el => {
-      if (el.src) {
-        const separator = el.src.includes('?') ? '&' : '?'
-        el.src = el.src + separator + 't=' + ts
-        el.load()
-      }
+    document.querySelectorAll('.audio-card audio, .audio-upload-section audio, .audio-clip-content audio, .video-section audio').forEach(el => {
+      el.load()
     })
   })
 }
@@ -1907,11 +1898,12 @@ const openClipDialog = (type, item, mediaType) => {
 }
 
 // 通用剪辑完成处理
-const handleMediaClipped = (data) => {
+const handleMediaClipped = async (data) => {
   console.log('媒体剪辑完成:', data)
   const type = clipItem.value?.type
   const ts = Date.now()
   const clipPath = clipItem.value?.path
+  const clippedDuration = data.duration
 
   // 根据素材类型更新对应的时间戳
   if (type === 'opening' && createForm.opening_video) {
@@ -1927,25 +1919,41 @@ const handleMediaClipped = (data) => {
         videos[idx] = { ...videos[idx], timestamp: ts }
       }
     }
-    loadMaterials()
   } else if (type === 'preview') {
     if (clipMediaType.value === 'video' && previewVideoPath.value) {
       previewVideoPath.value = data.filePath
       previewVideoTs.value = ts
     } else if (clipMediaType.value === 'audio' && previewItemData.value) {
-      previewItemData.value = { ...previewItemData.value, path: data.filePath, timestamp: ts }
+      previewItemData.value = { ...previewItemData.value, path: data.filePath, timestamp: ts, duration: clippedDuration }
+
+      // 音频剪辑：同步更新后端 duration
+      const itemId = previewItemData.value?.id || previewItemData.value?.bgm_id
+      const itemType = previewItemData.value?.bgm_id ? 'bgm' : 'audio'
+      if (itemId && clippedDuration) {
+        try {
+          await materialApi.update(itemId, { type: itemType, duration: clippedDuration })
+        } catch (e) {
+          console.warn('更新素材时长失败:', e)
+        }
+      }
     }
-    loadMaterials()
   }
+
+  // 重新加载素材列表（后端已有最新duration）
+  await loadMaterials()
+
+  // 给加载的数据添加时间戳标记以破坏浏览器缓存
+  referenceAudios.value.forEach(a => { a._ts = ts })
+  bgms.value.forEach(b => { b._ts = ts })
 
   ElMessage.success('剪辑完成')
   showClipDialog.value = false
   clipItem.value = null
 
-  // 强制刷新所有视频/音频元素以破坏浏览器缓存
+  // Vue 更新 DOM 后，强制刷新页面视频/音频元素
   nextTick(() => {
-    document.querySelectorAll('.media-clip-dialog video, .media-clip-dialog audio').forEach(el => {
-      if (el.src) el.load()
+    document.querySelectorAll('.audio-card audio, .audio-card video, .video-clip-action video, .audio-clip-action audio, .preview-content video, .preview-content audio').forEach(el => {
+      el.load()
     })
   })
 }
@@ -2777,10 +2785,34 @@ onUnmounted(() => {
   background: rgba(0, 0, 0, 0.5);
 }
 
+/* 按钮行布局 - 用于开场/结束视频 */
+.video-actions-row {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  width: 100%;
+}
+
 .video-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* 循环视频两列布局 */
+.loop-video-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+/* 场景视频两列布局 */
+.scene-video-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
 }
 
 .video-item {
@@ -2794,15 +2826,15 @@ onUnmounted(() => {
 }
 
 .video-item video {
-  width: 320px;
+  width: 100%;
   height: 180px;
   object-fit: cover;
   border-radius: 4px;
 }
 
 .video-item.scene video {
-  width: 400px;
-  height: 225px;
+  width: 100%;
+  height: 200px;
 }
 
 .video-info {
@@ -2818,6 +2850,19 @@ onUnmounted(() => {
   padding: 0;
   display: flex;
   gap: 8px;
+}
+
+/* 场景素材按钮行 - 包含标签选择器 */
+.video-actions-row.scene-actions {
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.video-actions-row.scene-actions .scene-select {
+  flex: 1;
+  min-width: 100px;
 }
 
 .emotion-select,

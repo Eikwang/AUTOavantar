@@ -121,7 +121,51 @@
           <div class="crop-handle crop-handle-br" @mousedown.stop="startCropDrag('br', $event)"></div>
           <!-- 尺寸标注 -->
           <div class="crop-size-label">{{ cropPixelW }}x{{ cropPixelH }}</div>
+          <!-- 比例锁定控制区 - 移到底部控制面板 -->
+          <div class="aspect-lock-control" v-if="false">
+            <el-switch
+              v-model="aspectLockEnabled"
+              size="small"
+              active-text="锁定"
+              inactive-text=""
+            />
+            <el-select
+              v-model="aspectRatio"
+              size="small"
+              :disabled="!aspectLockEnabled"
+              class="aspect-ratio-select"
+            >
+              <el-option value="original" label="原始比例" />
+              <el-option value="16:9" label="16:9" />
+              <el-option value="9:16" label="9:16" />
+              <el-option value="1:1" label="1:1" />
+            </el-select>
+          </div>
         </div>
+      </div>
+    </div>
+
+    <!-- 画面裁剪控制面板 - 移到底部时间轴位置 -->
+    <div v-if="activeMode === 'crop' && mediaType === 'video'" class="crop-control-panel">
+      <div class="crop-control-row">
+        <el-switch
+          v-model="aspectLockEnabled"
+          size="small"
+          active-text="锁定比例"
+          inactive-text=""
+        />
+        <el-select
+          v-model="aspectRatio"
+          size="small"
+          :disabled="!aspectLockEnabled"
+          class="aspect-ratio-select"
+        >
+          <el-option value="original" label="原始比例" />
+          <el-option value="16:9" label="16:9" />
+          <el-option value="9:16" label="9:16" />
+          <el-option value="1:1" label="1:1" />
+        </el-select>
+        <span class="crop-size-display">{{ cropPixelW }}x{{ cropPixelH }}</span>
       </div>
     </div>
 
@@ -284,6 +328,84 @@ const cropDragType = ref(null) // 'tl','tc','tr','ml','mr','bl','bc','br','move'
 const playerContainerRef = ref(null)
 const cropDragStart = ref({ mx: 0, my: 0, rect: {} })
 
+// === 画面裁剪锁定比例状态 ===
+const aspectLockEnabled = ref(true) // 默认开启锁定
+const aspectRatio = ref('original') // 默认原始比例
+const currentOriginalAspect = ref(16/9) // 当前裁剪区域的原始比例（用于"原始比例"选项）
+
+// 比例选项常量
+const aspectRatios = {
+  '16:9': 16/9,
+  '9:16': 9/16,
+  '1:1': 1,
+  'original': null
+}
+
+// 更新当前原始比例（当裁剪区域变化时）- 使用像素比例
+const updateOriginalAspect = () => {
+  if (aspectRatio.value === 'original' && cropRect.value.w > 0 && cropRect.value.h > 0 && videoWidth.value && videoHeight.value) {
+    // 将当前裁剪框的百分比比例转换为像素比例
+    const percentAspect = cropRect.value.w / cropRect.value.h
+    currentOriginalAspect.value = percentAspect * (videoWidth.value / videoHeight.value)
+  }
+}
+
+// 监听比例锁定设置变化，自动调整裁剪框到目标比例
+watch([aspectRatio, aspectLockEnabled], () => {
+  if (!aspectLockEnabled.value || !aspectRatio.value) return
+  if (!cropRect.value.w || !cropRect.value.h || !videoWidth.value || !videoHeight.value) return
+
+  let targetAspect = null
+  if (aspectRatio.value === 'original') {
+    targetAspect = currentOriginalAspect.value
+  } else {
+    targetAspect = aspectRatios[aspectRatio.value]
+  }
+
+  if (!targetAspect) return
+
+  // cropRect 是百分比(0-1)，targetAspect 是像素比例(如 16:9=1.78)
+  // 需要将像素比例转换为百分比比例
+  // percentAspect = targetAspect * (vh / vw)
+  const percentAspect = targetAspect * (videoHeight.value / videoWidth.value)
+
+  const currentAspect = cropRect.value.w / cropRect.value.h
+
+  // 如果当前比例与目标比例差异超过 1%，则调整
+  if (Math.abs(currentAspect - percentAspect) > 0.01) {
+    const r = cropRect.value
+
+    let newW, newH
+    if (percentAspect > currentAspect) {
+      // 目标更宽 → 以高度为基准
+      newH = r.h
+      newW = newH * percentAspect
+    } else {
+      // 目标更窄 → 以宽度为基准
+      newW = r.w
+      newH = newW / percentAspect
+    }
+
+    // 确保不超出边界
+    let newX = r.x
+    let newY = r.y
+    if (newW > 1) {
+      newW = 1
+      newH = newW / percentAspect
+    }
+    if (newH > 1) {
+      newH = 1
+      newW = newH * percentAspect
+    }
+
+    // 居中调整：保持中心点不变
+    newX = r.x + (r.w - newW) / 2
+    newY = r.y + (r.h - newH) / 2
+
+    cropRect.value = { x: newX, y: newY, w: newW, h: newH }
+  }
+})
+
 // === 计算属性 ===
 const isAudio = computed(() => {
   return props.mediaType === 'audio' ||
@@ -396,7 +518,7 @@ const handleLoadedMetadata = () => {
     clipStartTime.value = 0
     clipEndTime.value = duration.value
     // 从 video 元素获取渲染尺寸，更新裁剪叠加层位置
-    if (mediaType === 'video' && mediaRef.value.videoWidth) {
+    if (props.mediaType === 'video' && mediaRef.value.videoWidth) {
       videoWidth.value = mediaRef.value.videoWidth
       videoHeight.value = mediaRef.value.videoHeight
     }
@@ -472,6 +594,10 @@ const switchMode = (newMode) => {
       cropRect.value = { ...pendingCrop.value }
     } else {
       cropRect.value = { x: 0, y: 0, w: 1, h: 1 }
+    }
+    // 初始化原始比例
+    if (videoWidth.value > 0 && videoHeight.value > 0) {
+      currentOriginalAspect.value = videoWidth.value / videoHeight.value
     }
   }
 
@@ -800,62 +926,155 @@ const handleCropMouseMove = (e) => {
   let { x, y, w, h } = start
   const MIN = 0.1
 
-  switch (cropDragType.value) {
-    case 'tl':
-      x = Math.max(0, Math.min(x + dx, x + w - MIN))
-      y = Math.max(0, Math.min(y + dy, y + h - MIN))
-      w = start.x + start.w - x
-      h = start.y + start.h - y
-      break
-    case 'tc':
-      y = Math.max(0, Math.min(y + dy, y + h - MIN))
-      h = start.y + start.h - y
-      break
-    case 'tr':
-      w = Math.max(MIN, Math.min(start.w + dx, 1 - start.x))
-      y = Math.max(0, Math.min(y + dy, y + h - MIN))
-      h = start.y + start.h - y
-      break
-    case 'ml':
-      x = Math.max(0, Math.min(x + dx, x + w - MIN))
-      w = start.x + start.w - x
-      break
-    case 'mr':
-      w = Math.max(MIN, Math.min(start.w + dx, 1 - start.x))
-      break
-    case 'bl':
-      x = Math.max(0, Math.min(x + dx, x + w - MIN))
-      w = start.x + start.w - x
-      h = Math.max(MIN, Math.min(start.h + dy, 1 - start.y))
-      break
-    case 'bc':
-      h = Math.max(MIN, Math.min(start.h + dy, 1 - start.y))
-      break
-    case 'br':
-      w = Math.max(MIN, Math.min(start.w + dx, 1 - start.x))
-      h = Math.max(MIN, Math.min(start.h + dy, 1 - start.y))
-      break
-    case 'move':
-      const newW = start.w
-      const newH = start.h
-      let newX = start.x + dx
-      let newY = start.y + dy
-      newX = Math.max(0, Math.min(newX, 1 - newW))
-      newY = Math.max(0, Math.min(newY, 1 - newH))
-      x = newX
-      y = newY
-      w = newW
-      h = newH
-      break
+  // 获取目标比例
+  let targetAspect = null
+  if (aspectLockEnabled.value) {
+    if (aspectRatio.value === 'original') {
+      // 使用当前原始比例
+      targetAspect = currentOriginalAspect.value
+    } else {
+      targetAspect = aspectRatios[aspectRatio.value]
+    }
   }
 
-  // 边界约束
-  if (x + w > 1) w = 1 - x
-  if (y + h > 1) h = 1 - y
-  if (x < 0) x = 0
-  if (y < 0) y = 0
+  // 根据是否锁定比例应用不同的拖拽逻辑
+  if (cropDragType.value === 'move') {
+    // 移动模式：不管是否锁定比例，都只移动位置不改变尺寸
+    w = start.w
+    h = start.h
+    x = Math.max(0, Math.min(start.x + dx, 1 - w))
+    y = Math.max(0, Math.min(start.y + dy, 1 - h))
+  } else if (aspectLockEnabled.value && targetAspect && videoWidth.value && videoHeight.value) {
+    // === 锁定比例模式 ===
+    // targetAspect 是像素比例(如 16:9 = 1.78)，需要转换为百分比比例
+    // percentAspect = targetAspect * (videoHeight / videoWidth)
+    const percentAspect = targetAspect * (videoHeight.value / videoWidth.value)
+
+    // 简化逻辑：基于拖动方向增量，按比例缩放
+    let delta = 0
+
+    // 计算增量：哪个方向拖动大就用哪个
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // 水平拖动为主
+      const edgeExpand = (cropDragType.value === 'mr' || cropDragType.value === 'tr' || cropDragType.value === 'br')
+      delta = dx * start.w * 2
+      if (!edgeExpand) delta = -delta
+    } else {
+      // 垂直拖动为主
+      const edgeExpand = (cropDragType.value === 'bc' || cropDragType.value === 'bl' || cropDragType.value === 'br')
+      delta = dy * start.h * 2
+      if (!edgeExpand) delta = -delta
+    }
+
+    // 基于宽度计算，保持百分比比例
+    let newW = start.w + delta
+    newW = Math.max(MIN, Math.min(newW, 1))
+    const newH = newW / percentAspect
+
+    if (newH > 1) {
+      // 高度超出边界，以高度为基准
+      w = start.h * percentAspect
+      h = start.h
+    } else {
+      w = newW
+      h = newH
+    }
+
+    // 调整位置保持对应边不动
+    switch (cropDragType.value) {
+      case 'tl': // 左上角 - 保持右下角
+        x = start.x + start.w - w
+        y = start.y + start.h - h
+        break
+      case 'tc': // 上边中心 - 保持下边
+        y = start.y + start.h - h
+        x = start.x + (start.w - w) / 2
+        break
+      case 'tr': // 右上角 - 保持左下角
+        y = start.y + start.h - h
+        break
+      case 'ml': // 左边中心 - 保持右边
+        x = start.x + start.w - w
+        y = start.y + (start.h - h) / 2
+        break
+      case 'mr': // 右边中心 - 保持左边
+        y = start.y + (start.h - h) / 2
+        break
+      case 'bl': // 左下角 - 保持右上角
+        x = start.x + start.w - w
+        break
+      case 'bc': // 下边中心 - 保持上边
+        x = start.x + (start.w - w) / 2
+        break
+      case 'br': // 右下角 - 保持左上角
+        // 默认位置不变
+        break
+    }
+  } else {
+    // === 自由模式 ===
+    switch (cropDragType.value) {
+      case 'tl':
+        x = Math.max(0, Math.min(x + dx, x + w - MIN))
+        y = Math.max(0, Math.min(y + dy, y + h - MIN))
+        w = start.x + start.w - x
+        h = start.y + start.h - y
+        break
+      case 'tc':
+        y = Math.max(0, Math.min(y + dy, y + h - MIN))
+        h = start.y + start.h - y
+        break
+      case 'tr':
+        w = Math.max(MIN, Math.min(start.w + dx, 1 - start.x))
+        y = Math.max(0, Math.min(y + dy, y + h - MIN))
+        h = start.y + start.h - y
+        break
+      case 'ml':
+        x = Math.max(0, Math.min(x + dx, x + w - MIN))
+        w = start.x + start.w - x
+        break
+      case 'mr':
+        w = Math.max(MIN, Math.min(start.w + dx, 1 - start.x))
+        break
+      case 'bl':
+        x = Math.max(0, Math.min(x + dx, x + w - MIN))
+        w = start.x + start.w - x
+        h = Math.max(MIN, Math.min(start.h + dy, 1 - start.y))
+        break
+      case 'bc':
+        h = Math.max(MIN, Math.min(start.h + dy, 1 - start.y))
+        break
+      case 'br':
+        w = Math.max(MIN, Math.min(start.w + dx, 1 - start.x))
+        h = Math.max(MIN, Math.min(start.h + dy, 1 - start.y))
+        break
+      case 'move':
+        const newW = start.w
+        const newH = start.h
+        let newX = start.x + dx
+        let newY = start.y + dy
+        newX = Math.max(0, Math.min(newX, 1 - newW))
+        newY = Math.max(0, Math.min(newY, 1 - newH))
+        x = newX
+        y = newY
+        w = newW
+        h = newH
+        break
+    }
+
+    // 边界约束
+    if (x + w > 1) w = 1 - x
+    if (y + h > 1) h = 1 - y
+    if (x < 0) x = 0
+    if (y < 0) y = 0
+  }
 
   cropRect.value = { x, y, w, h }
+
+  // 如果选择了"原始比例"，更新当前比例（转换为像素比例）
+  if (aspectRatio.value === 'original' && w > 0 && h > 0 && videoWidth.value && videoHeight.value) {
+    const percentAspect = w / h
+    currentOriginalAspect.value = percentAspect * (videoWidth.value / videoHeight.value)
+  }
 }
 
 // === 操作 ===
@@ -868,6 +1087,12 @@ const handleReset = () => {
   } else if (activeMode.value === 'crop') {
     cropRect.value = { x: 0, y: 0, w: 1, h: 1 }
     pendingCrop.value = null
+    // 重置比例锁定状态
+    aspectLockEnabled.value = true
+    aspectRatio.value = 'original'
+    if (videoWidth.value > 0 && videoHeight.value > 0) {
+      currentOriginalAspect.value = videoWidth.value / videoHeight.value
+    }
   }
 }
 
@@ -917,12 +1142,14 @@ const handleSave = async () => {
           ElMessage.error(response.message || '时间剪辑失败')
           return
         }
+        console.log('[MediaClipper] 准备 emit clipped 事件:', { filePath, startTime: trimStart, endTime: trimEnd, duration: trimDuration })
         emit('clipped', {
           filePath: filePath,
           startTime: trimStart,
           endTime: trimEnd,
           duration: trimDuration
         })
+        console.log('[MediaClipper] clipped 事件已 emit')
       }
     }
 
@@ -952,7 +1179,6 @@ const handleSave = async () => {
       })
     }
 
-    ElMessage.success(doTrim && doCrop ? '剪辑+裁剪成功' : (doTrim ? '剪辑成功' : '裁剪成功'))
     activeMode.value = null
     pendingTrim.value = null
     pendingCrop.value = null
@@ -1158,19 +1384,85 @@ defineExpose({
 
 .crop-size-label {
   position: absolute;
-  bottom: -22px;
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%);
-  background: var(--color-primary);
-  color: var(--bg-card-solid);
-  padding: 1px var(--space-sm);
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 2px 8px;
   border-radius: 3px;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-sm);
   white-space: nowrap;
+  pointer-events: none;
+  z-index: 23;
 }
 
 .dark-theme .crop-size-label {
+  background: rgba(255, 255, 255, 0.9);
   color: #1a1a1a;
+}
+
+.aspect-lock-control {
+  position: absolute;
+  top: -36px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-card-solid);
+  padding: 3px 6px;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 25;
+}
+
+.dark-theme .aspect-lock-control {
+  background: var(--bg-card);
+  border: 1px solid var(--color-border-strong);
+}
+
+.aspect-ratio-select {
+  width: 90px;
+}
+
+.aspect-ratio-select .el-input__wrapper {
+  font-size: 11px;
+}
+
+/* === 画面裁剪控制面板 === */
+.crop-control-panel {
+  position: relative;
+  margin-top: var(--space-sm);
+  padding: 10px;
+  background: var(--bg-muted);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-strong);
+}
+
+.dark-theme .crop-control-panel {
+  background: var(--bg-card-solid);
+  border-color: var(--color-border-strong);
+}
+
+.crop-control-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.crop-size-display {
+  margin-left: auto;
+  font-family: 'Courier New', monospace;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  background: var(--bg-page);
+  padding: 2px 8px;
+  border-radius: 3px;
+}
+
+.dark-theme .crop-size-display {
+  background: var(--bg-card);
 }
 
 /* === 时间剪辑面板 === */

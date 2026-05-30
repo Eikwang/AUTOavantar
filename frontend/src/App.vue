@@ -57,10 +57,13 @@
                 :key="item.route"
                 :to="item.route"
                 class="nav-link"
-                :class="{ 'is-active': currentRoute === item.name }"
+                :class="{ 
+                  'is-active': currentRoute === item.name,
+                  'smart-cut-btn': item.name === 'SmartCut'
+                }"
               >
-                <el-icon><component :is="item.icon" /></el-icon>
-                {{ item.label }}
+                <el-icon class="nav-icon"><component :is="item.icon" /></el-icon>
+                <span class="nav-text">{{ item.label }}</span>
               </router-link>
             </nav>
 
@@ -574,26 +577,125 @@ onUnmounted(() => {
 .nav-link {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-xs);
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-md);
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--bg-card-solid);
+  box-shadow: var(--shadow-sm);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
   color: var(--color-text-regular);
   text-decoration: none;
-  transition: all var(--transition-fast);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid var(--color-border-light);
+}
+
+.nav-link .nav-icon {
+  font-size: 20px;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.nav-link .nav-text {
+  position: absolute;
+  opacity: 0;
+  transform: translateX(10px);
+  transition: all 0.3s ease;
+  font-size: var(--font-size-sm);
   white-space: nowrap;
 }
 
 .nav-link:hover {
+  width: 95px;
+  border-radius: 12px;
   color: var(--color-primary);
-  background: var(--color-primary-bg);
+  background: var(--bg-card-solid);
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-primary-light);
+}
+
+.nav-link:hover .nav-icon {
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+.nav-link:hover .nav-text {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .nav-link.is-active {
   color: var(--color-primary);
   background: var(--color-primary-bg);
-  font-weight: var(--font-weight-semibold);
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary-bg);
+}
+
+/* 智能裁剪按钮特殊样式 */
+/* 智能裁剪按钮 - 仅在非激活状态下显示绿色 */
+.nav-link.smart-cut-btn:not(.is-active) {
+  background: linear-gradient(135deg, var(--color-success) 0%, var(--color-success-dark) 100%);
+  color: white;
+  border-color: transparent;
+  box-shadow: 0 2px 8px rgba(103, 194, 58, 0.3);
+}
+
+.nav-link.smart-cut-btn:not(.is-active):hover {
+  background: linear-gradient(135deg, var(--color-success-light) 0%, var(--color-success) 100%);
+  box-shadow: 0 4px 16px rgba(103, 194, 58, 0.4);
+  transform: translateY(-2px);
+  color: white;
+  border-color: transparent;
+}
+
+/* 激活状态下使用普通按钮样式 */
+.nav-link.smart-cut-btn.is-active {
+  background: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.2), 0 4px 12px rgba(64, 158, 255, 0.3);
+  color: white;
+}
+
+/* 暗色主题下的导航按钮 */
+.dark-theme .nav-link {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-regular);
+}
+
+.dark-theme .nav-link:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.dark-theme .nav-link.is-active {
+  background: rgba(0, 217, 255, 0.15);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+/* 暗色主题下智能裁剪按钮 - 仅在非激活状态下显示绿色 */
+.dark-theme .nav-link.smart-cut-btn:not(.is-active) {
+  background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+  color: #0d1117;
+  box-shadow: 0 2px 8px rgba(0, 255, 136, 0.3);
+}
+
+.dark-theme .nav-link.smart-cut-btn:not(.is-active):hover {
+  background: linear-gradient(135deg, #33ff9e 0%, #00ff88 100%);
+  box-shadow: 0 4px 16px rgba(0, 255, 136, 0.4);
+  color: #0d1117;
+}
+
+/* 暗色主题下激活状态使用普通按钮样式 */
+.dark-theme .nav-link.smart-cut-btn.is-active {
+  background: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(64, 158, 255, 0.2), 0 4px 12px rgba(64, 158, 255, 0.3);
+  color: white;
 }
 
 .theme-toggle-btn {

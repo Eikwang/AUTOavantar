@@ -13,10 +13,6 @@
           <el-icon><Plus /></el-icon>
           新建情绪标签
         </el-button>
-        <el-button type="success" class="sync-yaml-btn" @click="handleSyncToYaml">
-          <el-icon><Refresh /></el-icon>
-          同步到 YAML
-        </el-button>
       </div>
 
       <el-table :data="emotions" stripe style="width: 100%">
@@ -123,7 +119,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Refresh, Sunny } from '@element-plus/icons-vue'
+import { Plus, Sunny } from '@element-plus/icons-vue'
 import { useTagStore } from '@/stores/tagStore'
 
 const tagStore = useTagStore()
@@ -174,9 +170,10 @@ const handleCreate = async () => {
     ElMessage.warning('请输入情绪标签名称')
     return
   }
-  
+
   isLoading.value = true
   try {
+    // 1. 创建情绪标签
     await tagStore.createEmotionTag({
       name: newEmotionForm.value.name,
       vec1: newEmotionForm.value.vec1,
@@ -189,7 +186,15 @@ const handleCreate = async () => {
       vec8: newEmotionForm.value.vec8,
       speed: newEmotionForm.value.speed
     })
-    ElMessage.success('情绪标签创建成功')
+
+    // 2. 同步到 YAML
+    const result = await tagStore.syncEmotionsToYaml()
+    if (result.synced) {
+      ElMessage.success('情绪标签创建成功并已同步')
+    } else {
+      ElMessage.success('情绪标签创建成功')
+    }
+
     showCreateDialog.value = false
     resetNewForm()
     await loadEmotions()
@@ -222,9 +227,10 @@ const handleUpdate = async () => {
     ElMessage.warning('请输入情绪标签名称')
     return
   }
-  
+
   isLoading.value = true
   try {
+    // 1. 更新情绪标签
     await tagStore.updateEmotionTag(editEmotionForm.value.id, {
       name: editEmotionForm.value.name,
       vec1: editEmotionForm.value.vec1,
@@ -237,7 +243,15 @@ const handleUpdate = async () => {
       vec8: editEmotionForm.value.vec8,
       speed: editEmotionForm.value.speed
     })
-    ElMessage.success('情绪标签更新成功')
+
+    // 2. 同步到 YAML
+    const result = await tagStore.syncEmotionsToYaml()
+    if (result.synced) {
+      ElMessage.success('情绪标签更新成功并已同步')
+    } else {
+      ElMessage.success('情绪标签更新成功')
+    }
+
     showEditDialog.value = false
     await loadEmotions()
   } catch (e) {
@@ -263,20 +277,6 @@ const handleDelete = async (row) => {
     if (e !== 'cancel') {
       error.value = e.message || '删除失败'
     }
-  } finally {
-    isLoading.value = false
-  }
-}
-
-const handleSyncToYaml = async () => {
-  isLoading.value = true
-  try {
-    const result = await tagStore.syncEmotionsToYaml()
-    if (result.synced) {
-      ElMessage.success('情绪标签已同步到 YAML 文件')
-    }
-  } catch (e) {
-    error.value = e.message || '同步失败'
   } finally {
     isLoading.value = false
   }

@@ -298,9 +298,28 @@
           </div>
         </el-card>
 
-        <TagGroupManager />
+        <!-- 标签组管理折叠面板 -->
+        <el-collapse v-model="activeCollapseItems" class="settings-collapse">
+          <el-collapse-item name="tagGroup">
+            <template #title>
+              <div class="collapse-title">
+                <el-icon><PriceTag /></el-icon>
+                <span>标签组管理</span>
+              </div>
+            </template>
+            <TagGroupManager />
+          </el-collapse-item>
 
-        <EmotionTagManager />
+          <el-collapse-item name="emotionTag">
+            <template #title>
+              <div class="collapse-title">
+                <el-icon><CollectionTag /></el-icon>
+                <span>情绪标签管理</span>
+              </div>
+            </template>
+            <EmotionTagManager />
+          </el-collapse-item>
+        </el-collapse>
 
         <!-- 激活对话框 -->
         <ActivationDialog
@@ -308,34 +327,25 @@
           @activated="handleActivated"
         />
 
+        <!-- 系统维护卡片 -->
         <el-card class="settings-card" shadow="hover">
           <template #header>
-            <div class="card-header">
-              <el-icon><Delete /></el-icon>
-              <span>系统维护</span>
-            </div>
-          </template>
-
-          <div class="form-grid">
-            <el-form-item label="清理缓存" class="full-width">
-              <div class="cache-info">
-                <p>清理系统运行过程中产生的临时文件，包括：</p>
-                <ul>
-                  <li>任务执行中间文件</li>
-                  <li>音频/视频处理临时文件</li>
-                  <li>日志文件</li>
-                </ul>
+            <div class="card-header maintenance-header">
+              <div class="header-left">
+                <el-icon><Delete /></el-icon>
+                <span>系统维护</span>
               </div>
               <el-button 
                 type="danger" 
+                size="small"
                 @click="showClearCacheConfirm"
                 :loading="clearingCache"
               >
                 <el-icon><Delete /></el-icon>
                 清理缓存
               </el-button>
-            </el-form-item>
-          </div>
+            </div>
+          </template>
         </el-card>
       </el-form>
     </div>
@@ -347,7 +357,7 @@
 import { ref, computed, onMounted, inject } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  Key, Document, Setting, Delete, Monitor, Lock, CopyDocument, Refresh
+  Key, Document, Setting, Delete, Monitor, Lock, CopyDocument, Refresh, PriceTag, CollectionTag
 } from '@element-plus/icons-vue'
 import { settingsApi, systemApi, licenseApi } from '@/services/api'
 import { useSettingsStore } from '@/stores/settingsStore.js'
@@ -361,6 +371,9 @@ const settingsStore = useSettingsStore()
 
 const saving = ref(false)
 const clearingCache = ref(false)
+
+// 折叠面板状态 - 默认折叠
+const activeCollapseItems = ref([])
 
 // 低显存模式
 const lowMemoryMode = ref(false)
@@ -999,6 +1012,64 @@ onMounted(() => {
 
 .dark-theme .deerflow-badge:hover {
   color: rgba(255, 255, 255, 0.6);
+}
+
+/* 折叠面板样式 */
+.settings-collapse {
+  margin-bottom: var(--space-xl);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-card);
+}
+
+.settings-collapse :deep(.el-collapse-item__header) {
+  padding: var(--space-base) var(--space-lg);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  background: var(--color-primary-bg);
+  border-bottom: 1px solid var(--color-border);
+  transition: all var(--transition-normal);
+}
+
+.settings-collapse :deep(.el-collapse-item__header:hover) {
+  background: var(--bg-hover);
+}
+
+.settings-collapse :deep(.el-collapse-item__arrow) {
+  color: var(--color-primary);
+  font-size: var(--font-size-lg);
+}
+
+.settings-collapse :deep(.el-collapse-item__wrap) {
+  background: var(--bg-card);
+}
+
+.settings-collapse :deep(.el-collapse-item__content) {
+  padding: var(--space-lg);
+}
+
+.collapse-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.collapse-title .el-icon {
+  font-size: var(--font-size-2xl);
+  color: var(--color-primary);
+}
+
+/* 系统维护头部样式 */
+.maintenance-header {
+  justify-content: space-between;
+}
+
+.maintenance-header .header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 @media (max-width: 768px) {

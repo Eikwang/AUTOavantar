@@ -115,18 +115,12 @@
         <div class="video-container">
           <video
             ref="videoPlayer"
-            :src="videoUrl"
+            :src="`/files/${videoInfo?.video_path}${videoInfo?.timestamp ? '?t=' + videoInfo.timestamp : ''}`"
             controls
             class="video-player"
             @loadedmetadata="handleVideoLoaded"
           ></video>
         </div>
-        <div class="video-actions-bar">
-          <el-button type="warning" size="small" @click="openClipDialog(videoInfo.video_path, 'video')">
-            <el-icon><Scissor /></el-icon> 剪辑视频
-          </el-button>
-        </div>
-
         <div class="video-info">
           <el-descriptions :column="2" border size="small">
             <el-descriptions-item label="文件名">{{ videoInfo.video_name }}</el-descriptions-item>
@@ -174,15 +168,24 @@
 
           <el-divider content-position="left">参数设置</el-divider>
 
-          <el-form-item label="最短片段时长">
-            <el-slider
-              v-model="config.min_segment_duration"
-              :min="3"
-              :max="240"
-              :step="1"
-              show-input
-              :format-tooltip="(val) => `${val} 秒`"
-            />
+          <el-form-item label="最短片段时长" class="duration-slider-item">
+            <div class="slider-with-input">
+              <el-slider
+                v-model="config.min_segment_duration"
+                :min="3"
+                :max="240"
+                :step="1"
+                :format-tooltip="(val) => `${val} 秒`"
+              />
+              <el-input-number
+                v-model="config.min_segment_duration"
+                :min="3"
+                :max="240"
+                :step="1"
+                controls-position="right"
+                class="duration-input"
+              />
+            </div>
           </el-form-item>
 
           <el-form-item class="action-buttons-row">
@@ -193,6 +196,13 @@
               @click="startCutting"
             >
               开始裁剪
+            </el-button>
+            <el-button
+              type="warning"
+              size="large"
+              @click="openClipDialog(videoInfo.video_path, 'video')"
+            >
+              剪辑视频
             </el-button>
             <el-button
               size="large"
@@ -252,92 +262,58 @@
       <div class="segments-grid">
         <div
           v-for="seg in segments"
-          :key="seg.segment_id"
+          :key="`${seg.segment_id}-${seg.timestamp || 0}`"
           class="segment-card"
-          :class="{ 'segment-selected': selectedSegments.includes(seg.segment_id) }"
-          @click="previewSegment(seg)"
         >
-          <div class="segment-thumbnail">
-            <img :src="`/files/${seg.thumbnail}`" :alt="seg.reason_label" />
+          <div class="segment-video-wrapper">
+            <video
+              :src="`/files/${seg.video_path}${seg.timestamp ? '?t=' + seg.timestamp : ''}`"
+              controls
+              class="segment-video"
+              preload="metadata"
+            ></video>
             <span class="segment-duration">{{ formatDuration(seg.duration) }}</span>
             <el-tag class="segment-reason" :type="getReasonTagType(seg.reason)" size="small">
               {{ seg.reason_label }}
             </el-tag>
-            <el-button
-              class="segment-delete-btn"
-              type="danger"
-              size="small"
-              circle
-              @click.stop="deleteSegment(seg.segment_id)"
-            >
-              <el-icon><Delete /></el-icon>
-            </el-button>
-            <el-button
-              class="segment-select-btn"
-              :type="selectedSegments.includes(seg.segment_id) ? 'primary' : 'default'"
-              size="small"
-              circle
-              @click.stop="toggleSegmentSelect(seg.segment_id)"
-            >
-              <el-icon>
-                <component :is="selectedSegments.includes(seg.segment_id) ? 'Check' : 'Plus'" />
-              </el-icon>
-            </el-button>
           </div>
           <div class="segment-info">
             <span>{{ formatDuration(seg.start_time) }} - {{ formatDuration(seg.end_time) }}</span>
           </div>
+          <div class="segment-actions">
+            <el-button
+              type="warning"
+              size="default"
+              @click="openClipDialog(seg.video_path, 'video', 'segment')"
+            >
+              剪辑片段
+            </el-button>
+            <el-button
+              type="success"
+              size="default"
+              @click="extractAudio(seg)"
+            >
+              提取音频
+            </el-button>
+            <el-button
+              type="primary"
+              size="default"
+              @click="addToPending(seg)"
+            >
+              加入列表
+            </el-button>
+            <el-button
+              type="danger"
+              size="default"
+              @click="deleteSegment(seg.segment_id)"
+            >
+              删除
+            </el-button>
+          </div>
         </div>
       </div>
 
-      <!-- 批量操作 -->
-      <div v-if="selectedSegments.length > 0" class="batch-actions">
-        <el-button type="primary" @click="batchAddToPending">
-          批量添加（{{ selectedSegments.length }} 个）
-        </el-button>
-        <el-button @click="clearSelection">取消选择</el-button>
-      </div>
     </el-card>
-
-    <!-- 片段预览弹窗 -->
-    <el-dialog
-      v-model="previewDialogVisible"
-      :title="previewSegmentInfo?.reason_label || '片段预览'"
-      width="600px"
-      destroy-on-close
-      @opened="onPreviewOpened"
-      @closed="onPreviewClosed"
-    >
-      <div class="preview-dialog-content">
-        <div class="preview-video-container">
-          <video
-            ref="previewVideoPlayer"
-            v-if="previewSegmentInfo"
-            :src="`/files/${previewSegmentInfo.video_path}${previewSegmentInfo.timestamp ? '?t=' + previewSegmentInfo.timestamp : ''}`"
-            controls
-            autoplay
-            class="preview-video"
-          ></video>
-        </div>
-        <div class="preview-actions-bar">
-          <el-button type="warning" size="small" @click="openClipDialog(previewSegmentInfo.video_path, 'video')">
-            <el-icon><Scissor /></el-icon> 剪辑此片段
-          </el-button>
-        </div>
-        <div v-if="previewSegmentInfo" class="preview-info">
-          <el-descriptions :column="2" border size="small">
-            <el-descriptions-item label="时长">{{ formatDuration(previewSegmentInfo.duration) }}</el-descriptions-item>
-            <el-descriptions-item label="时间范围">{{ formatDuration(previewSegmentInfo.start_time) }} - {{ formatDuration(previewSegmentInfo.end_time) }}</el-descriptions-item>
-            <el-descriptions-item label="分割原因">{{ previewSegmentInfo.reason_label }}</el-descriptions-item>
-          </el-descriptions>
-        </div>
-      </div>
-      <template #footer>
-        <el-button @click="previewDialogVisible = false">关闭</el-button>
-        <el-button type="primary" @click="addToPending(previewSegmentInfo)">添加到待处理</el-button>
-        <el-button type="success" @click="extractAudio(previewSegmentInfo)">提取音频</el-button>
-      </template>
-    </el-dialog>
 
     <!-- 待处理列表 -->
     <el-card v-if="pendingSegments.length > 0" class="pending-section">
@@ -500,8 +476,7 @@
             :media-type="clipMediaType"
             :is-dark-theme="isDarkTheme"
             default-mode="trim"
-            @clipped="clipMediaType === 'video' ? handleVideoClipped : handlePreviewSegmentClipped"
-            @cropped="handleVideoCropped"
+            @clipped="handleClipped"
           />
         </div>
       </div>
@@ -510,7 +485,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, inject } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, nextTick, inject } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -529,10 +504,13 @@ import {
   Back,
   Headset
 } from '@element-plus/icons-vue'
-import { smartCutApi, materialApi } from '@/services/api'
+import { smartCutApi, materialApi, mediaClipApi } from '@/services/api'
 import MediaClipper from '@/components/MediaClipper.vue'
 
 const router = useRouter()
+
+// 主题
+const isDarkTheme = inject('isDarkTheme', ref(false))
 
 // 当前任务ID
 const currentTaskId = ref('')
@@ -555,6 +533,7 @@ const uploadProgress = ref(0)
 const videoInfo = ref(null)
 const videoPlayer = ref(null)
 const videoUrl = ref('')
+const videoKey = ref(0)
 
 // 配置
 const config = reactive({
@@ -580,16 +559,8 @@ const progressInfo = reactive({
 // 片段列表
 const segments = ref([])
 
-// 选中的片段
-const selectedSegments = ref([])
-
 // 待处理列表
 const pendingSegments = ref([])
-
-// 预览弹窗
-const previewDialogVisible = ref(false)
-const previewSegmentInfo = ref(null)
-const previewVideoPlayer = ref(null)
 
 // 剪辑对话框
 const showClipDialog = ref(false)
@@ -846,49 +817,137 @@ const handleVideoLoaded = () => {
   console.log('视频加载完成')
 }
 
+// 当前正在剪辑的片段ID
+const currentClippingSegmentId = ref(null)
+
 // 打开剪辑对话框
-const openClipDialog = (path, mediaType) => {
+const openClipDialog = (path, mediaType, source = 'main') => {
   clipItemPath.value = path
   clipMediaType.value = mediaType
+  // 如果是片段剪辑，记录片段ID
+  if (source === 'segment') {
+    const seg = segments.value.find(s => s.video_path === path)
+    currentClippingSegmentId.value = seg ? seg.segment_id : null
+  } else {
+    currentClippingSegmentId.value = null
+  }
   showClipDialog.value = true
 }
 
-// 原视频剪辑回调
-const handleVideoClipped = (data) => {
-  ElMessage.success('剪辑成功')
-  if (videoInfo.value) {
-    videoInfo.value = { ...videoInfo.value, timestamp: Date.now() }
-    videoUrl.value = `/files/${data.filePath}?t=${Date.now()}`
+// 统一的剪辑回调处理函数
+const handleClipped = async (data) => {
+  console.log('[SmartCutView] handleClipped 被调用:', {
+    data,
+    currentClippingSegmentId: currentClippingSegmentId.value
+  })
+  if (currentClippingSegmentId.value) {
+    await handleSegmentClipped(data)
+  } else {
+    await handleVideoClipped(data)
   }
-  showClipDialog.value = false
 }
 
-const handleVideoCropped = (data) => {
-  handleVideoClipped(data)
+// 原视频剪辑回调
+const handleVideoClipped = async (data) => {
+  console.log('[SmartCutView] handleVideoClipped 开始执行, videoInfo:', !!videoInfo.value)
+  const ts = Date.now()
+  if (videoInfo.value) {
+    // 先关闭对话框
+    console.log('[SmartCutView] 关闭剪辑对话框')
+    showClipDialog.value = false
+    console.log('[SmartCutView] showClipDialog 已设为 false, 当前值:', showClipDialog.value)
+    ElMessage.success('剪辑成功')
+
+    // 更新 videoInfo 的 timestamp，模板 :src 会自动重新计算 URL
+    videoInfo.value = { ...videoInfo.value, timestamp: ts }
+    console.log('[SmartCutView] videoInfo timestamp 已更新:', ts)
+
+    // 等待 DOM 更新后强制 video 元素重新加载
+    nextTick(() => {
+      const videoEl = videoPlayer.value
+      console.log('[SmartCutView] nextTick, videoEl:', !!videoEl)
+      if (videoEl) {
+        videoEl.load()
+        console.log('[SmartCutView] videoEl.load() 已调用')
+      }
+    })
+
+    // 异步更新视频元信息（不阻塞 UI 刷新）
+    try {
+      const infoRes = await mediaClipApi.getInfo({
+        file_path: data.filePath,
+        file_type: 'video'
+      })
+      if (infoRes.code === 200) {
+        videoInfo.value = {
+          ...videoInfo.value,
+          duration: infoRes.data.duration,
+          fps: infoRes.data.fps,
+          width: infoRes.data.width,
+          height: infoRes.data.height,
+          total_frames: infoRes.data.total_frames
+        }
+      }
+    } catch (e) {
+      console.warn('重新获取视频信息失败:', e)
+    }
+  } else {
+    showClipDialog.value = false
+    ElMessage.success('剪辑成功')
+  }
 }
 
-// 片段预览剪辑回调
-const handlePreviewSegmentClipped = (data) => {
-  ElMessage.success('剪辑成功')
-  if (previewSegmentInfo.value) {
-    // 更新segments数组中对应segment的视频路径
-    const segIndex = segments.value.findIndex(s => s.segment_id === previewSegmentInfo.value.segment_id)
+// 片段剪辑回调
+const handleSegmentClipped = async (data) => {
+  const ts = Date.now()
+  if (currentClippingSegmentId.value) {
+    const segIndex = segments.value.findIndex(s => s.segment_id === currentClippingSegmentId.value)
     if (segIndex !== -1) {
-      // 保持原有segment_id和reason，只更新视频路径和时间戳
+      // 替换为新对象，timestamp 变化会使模板 :src 自动重新计算
       segments.value[segIndex] = {
         ...segments.value[segIndex],
         video_path: data.filePath,
-        timestamp: Date.now()
+        timestamp: ts,
+        duration: data.duration
       }
     }
-    // 同时更新预览信息以刷新播放器
-    previewSegmentInfo.value = { ...previewSegmentInfo.value, video_path: data.filePath, timestamp: Date.now() }
-  }
-  showClipDialog.value = false
-}
+    currentClippingSegmentId.value = null
+    showClipDialog.value = false
+    ElMessage.success('剪辑成功')
 
-const handlePreviewSegmentCropped = (data) => {
-  handlePreviewSegmentClipped(data)
+    // 等待 DOM 更新后强制刷新片段视频
+    nextTick(() => {
+      const videoWrappers = document.querySelectorAll('.segment-video-wrapper video')
+      videoWrappers.forEach(el => {
+        el.load()
+      })
+    })
+
+    // 异步更新视频元信息（不阻塞 UI 刷新）
+    if (segIndex !== -1) {
+      try {
+        const infoRes = await mediaClipApi.getInfo({
+          file_path: data.filePath,
+          file_type: 'video'
+        })
+        if (infoRes.code === 200) {
+          segments.value[segIndex] = {
+            ...segments.value[segIndex],
+            duration: infoRes.data.duration,
+            fps: infoRes.data.fps,
+            width: infoRes.data.width,
+            height: infoRes.data.height,
+            total_frames: infoRes.data.total_frames
+          }
+        }
+      } catch (e) {
+        console.warn('重新获取视频信息失败:', e)
+      }
+    }
+  } else {
+    showClipDialog.value = false
+    ElMessage.success('剪辑成功')
+  }
 }
 
 const resetUpload = () => {
@@ -969,52 +1028,12 @@ const getReasonTagType = (reason) => {
 }
 
 // 片段操作
-const previewSegment = (seg) => {
-  previewSegmentInfo.value = seg
-  previewDialogVisible.value = true
-}
-
-const onPreviewOpened = () => {
-  // 弹窗打开后自动播放视频
-  if (previewVideoPlayer.value) {
-    previewVideoPlayer.value.play().catch(() => {
-      // 自动播放可能被浏览器阻止，忽略错误
-    })
-  }
-}
-
-const onPreviewClosed = () => {
-  // 弹窗关闭时停止播放
-  if (previewVideoPlayer.value) {
-    previewVideoPlayer.value.pause()
-    previewVideoPlayer.value.currentTime = 0
-  }
-}
-
-const toggleSegmentSelect = (segmentId) => {
-  const index = selectedSegments.value.indexOf(segmentId)
-  if (index > -1) {
-    selectedSegments.value.splice(index, 1)
-  } else {
-    selectedSegments.value.push(segmentId)
-  }
-}
-
-const clearSelection = () => {
-  selectedSegments.value = []
-}
-
 const deleteSegment = (segmentId) => {
   const index = segments.value.findIndex(s => s.segment_id === segmentId)
   if (index > -1) {
     segments.value.splice(index, 1)
     // 如果该片段在待处理列表中，也一并移除
     removeFromPending(segmentId)
-    // 如果该片段在选中列表中，也一并移除
-    const selectedIndex = selectedSegments.value.indexOf(segmentId)
-    if (selectedIndex > -1) {
-      selectedSegments.value.splice(selectedIndex, 1)
-    }
     ElMessage.success('片段已删除')
   }
 }
@@ -1030,7 +1049,6 @@ const addToPending = (seg) => {
 
   pendingSegments.value.push(seg)
   ElMessage.success('已添加到待处理列表')
-  previewDialogVisible.value = false
 }
 
 const removeFromPending = (segmentId) => {
@@ -1042,19 +1060,6 @@ const removeFromPending = (segmentId) => {
 
 const clearPending = () => {
   pendingSegments.value = []
-}
-
-const batchAddToPending = () => {
-  let addedCount = 0
-  selectedSegments.value.forEach(segmentId => {
-    const seg = segments.value.find(s => s.segment_id === segmentId)
-    if (seg && !pendingSegments.value.find(s => s.segment_id === segmentId)) {
-      pendingSegments.value.push(seg)
-      addedCount++
-    }
-  })
-  ElMessage.success(`已添加 ${addedCount} 个片段到待处理列表`)
-  clearSelection()
 }
 
 const extractAudio = async (seg) => {
@@ -1302,6 +1307,7 @@ const loadHistory = async () => {
 const restoreHistory = async (item) => {
   currentTaskId.value = item.task_id
   isFromHistory.value = true
+  const now = Date.now()
 
   // uploaded状态：恢复上传信息，不加载片段
   if (item.status === 'uploaded') {
@@ -1314,10 +1320,8 @@ const restoreHistory = async (item) => {
       width: item.video_width,
       height: item.video_height,
       total_frames: item.total_frames,
-      thumbnail: item.thumbnail || ''
-    }
-    if (item.video_path) {
-      videoUrl.value = `/files/${item.video_path}?t=${Date.now()}`
+      thumbnail: item.thumbnail || '',
+      timestamp: now
     }
     segments.value = []
     ElMessage.success('已恢复上传状态，可继续裁剪')
@@ -1328,7 +1332,10 @@ const restoreHistory = async (item) => {
   try {
     const res = await smartCutApi.getSegments(item.task_id)
     if (res.code === 200 && res.data.segments) {
-      segments.value = res.data.segments
+      segments.value = res.data.segments.map(seg => ({
+        ...seg,
+        timestamp: now
+      }))
       videoInfo.value = {
         video_name: item.video_name,
         video_path: item.video_path,
@@ -1336,11 +1343,8 @@ const restoreHistory = async (item) => {
         fps: item.video_fps,
         width: item.video_width,
         height: item.video_height,
-        total_frames: item.total_frames
-      }
-      // 设置视频 URL 以便播放原视频
-      if (item.video_path) {
-        videoUrl.value = `/files/${item.video_path}?t=${Date.now()}`
+        total_frames: item.total_frames,
+        timestamp: now
       }
       ElMessage.success('已恢复历史记录')
     }
@@ -1584,6 +1588,8 @@ onUnmounted(() => {
   border-radius: var(--radius-md);
   overflow: hidden;
   transition: all 0.3s;
+  display: flex;
+  flex-direction: column;
 }
 
 .segment-card:hover {
@@ -1591,16 +1597,16 @@ onUnmounted(() => {
   box-shadow: var(--shadow-md);
 }
 
-.segment-thumbnail {
+.segment-video-wrapper {
   position: relative;
   aspect-ratio: 16/9;
   background: #000;
 }
 
-.segment-thumbnail img {
+.segment-video {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .segment-duration {
@@ -1620,50 +1626,25 @@ onUnmounted(() => {
   left: var(--space-sm);
 }
 
-.segment-select-btn {
-  position: absolute;
-  top: var(--space-sm);
-  right: var(--space-sm);
-}
-
-.segment-delete-btn {
-  position: absolute;
-  top: var(--space-sm);
-  right: 40px;
-}
-
-.segment-selected {
-  border-color: var(--color-primary);
-  border-width: 2px;
-  box-shadow: 0 0 8px rgba(64, 158, 255, 0.3);
-}
-
 .segment-info {
   padding: var(--space-sm) var(--space-md);
   font-size: var(--font-size-sm);
   color: var(--color-text-regular);
+  border-bottom: 1px solid var(--color-border-light);
 }
 
-.batch-actions {
-  margin-top: var(--space-base);
-  display: flex;
-  gap: var(--space-md);
+.segment-actions {
+  padding: var(--space-sm) var(--space-md);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-sm);
 }
 
-.preview-dialog-content {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-base);
-}
-
-.preview-video-container {
-  height: 400px;
-  background: #000;
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
+.segment-actions .el-button {
+  width: 100%;
+  font-size: var(--font-size-base);
+  padding: 12px 16px;
+  height: auto;
 }
 
 .preview-video {
@@ -1742,6 +1723,23 @@ onUnmounted(() => {
   gap: var(--space-md);
 }
 
+/* 滑块与输入框上下排列 */
+.slider-with-input {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  width: 100%;
+}
+
+.slider-with-input .el-slider {
+  width: 100%;
+}
+
+.duration-input {
+  width: 120px;
+  align-self: flex-start;
+}
+
 /* 操作按钮强制并排 */
 .action-buttons-row {
   display: flex;
@@ -1754,11 +1752,13 @@ onUnmounted(() => {
   gap: var(--space-md);
   flex-wrap: nowrap;
   width: 100%;
+  justify-content: space-between;
 }
 
 .action-buttons-row :deep(.el-button) {
   flex: 1;
   min-width: 0;
+  max-width: 160px;
 }
 
 /* 音频弹窗 */
@@ -2006,25 +2006,5 @@ onUnmounted(() => {
   }
 }
 
-/* 视频操作栏 */
-.video-actions-bar {
-  padding: var(--space-md) var(--space-base);
-  background: var(--bg-muted);
-  border-top: 1px solid var(--color-border-strong);
-  display: flex;
-  justify-content: flex-end;
-}
-
-/* 预览操作栏 */
-.preview-actions-bar {
-  padding: var(--space-md) 0;
-  display: flex;
-  justify-content: center;
-}
-
 /* ==================== 暗色主题覆盖 ==================== */
-/* 选中片段阴影在暗色下使用品牌色 */
-:global(body.dark-theme) .smart-cut-view .segment-selected {
-  box-shadow: 0 0 8px rgba(0, 217, 255, 0.3);
-}
 </style>

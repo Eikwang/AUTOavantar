@@ -116,7 +116,8 @@ export const materialApi = {
       params.scene_videos = JSON.stringify(data.scene_videos || [])
     }
     if (data.type === 'audio') {
-      params.audio_clips = JSON.stringify(data.audio_clips)
+      if (data.audio_clips !== undefined) params.audio_clips = JSON.stringify(data.audio_clips)
+      if (data.duration !== undefined) params.duration = data.duration
     }
     if (data.type === 'bgm') {
       params.bgm_path = data.bgm_path

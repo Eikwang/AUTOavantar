@@ -1001,16 +1001,18 @@ async def create_material(
 
 @router.put("/materials/{material_id}", response_model=DeleteResponse)
 async def update_material(
-    material_id: str, 
-    type: str = Query(..., description="素材类型: role/scene/bgm/audio"), 
-    name: str = Query(..., description="素材名称"),
+    material_id: str,
+    type: str = Query(..., description="素材类型: role/scene/bgm/audio"),
+    name: str = Query(None, description="素材名称（可选，audio/bgm类型可不传）"),
     role_type: str = Query(None, description="角色种类"),
     scenes: List[str] = Query(None, description="适用场景"),
     opening_video: str = Query(None, description="开场视频路径（仅角色类型使用）"),
     loop_videos: str = Query(None, description="循环视频列表（JSON格式，仅角色类型使用）"),
     ending_video: str = Query(None, description="结尾视频路径（仅角色类型使用）"),
     audio_id: str = Query(None, description="音频ID（仅角色类型使用）"),
-    scene_videos: str = Query(None, description="场景视频列表（JSON格式，仅场景类型使用）")
+    scene_videos: str = Query(None, description="场景视频列表（JSON格式，仅场景类型使用）"),
+    duration: float = Query(None, description="音频/BGM时长（仅audio/bgm类型使用）"),
+    path: str = Query(None, description="音频/BGM文件路径（仅audio/bgm类型使用）")
 ):
     """
     更新素材
@@ -1037,7 +1039,8 @@ async def update_material(
         if type == "role":
             for role in MOCK_ROLES:
                 if role["role_id"] == material_id:
-                    role["role_name"] = name
+                    if name is not None:
+                        role["role_name"] = name
                     if role_type is not None:
                         role["role_type"] = role_type
                     if scenes is not None:
@@ -1071,7 +1074,8 @@ async def update_material(
         elif type == "scene":
             for scene in MOCK_SCENES:
                 if scene["scene_id"] == material_id:
-                    scene["scene_name"] = name
+                    if name is not None:
+                        scene["scene_name"] = name
                     if scene_videos is not None:
                         try:
                             scene["scene_videos"] = json.loads(scene_videos)
@@ -1087,17 +1091,27 @@ async def update_material(
         elif type == "bgm":
             for bgm in MOCK_BGMS:
                 if bgm["bgm_id"] == material_id:
-                    bgm["bgm_name"] = name
+                    if name is not None:
+                        bgm["bgm_name"] = name
+                    if duration is not None:
+                        bgm["duration"] = duration
+                    if path is not None:
+                        bgm["path"] = path
                     save_mock_bgms()
-                    logger.info(f"更新BGM素材: {material_id}")
+                    logger.info(f"更新BGM素材: {material_id}, duration={duration}, path={path}")
                     return DeleteResponse(code=200, message="素材更新成功")
             raise HTTPException(status_code=404, detail="BGM不存在")
         elif type == "audio":
             for audio in MOCK_AUDIOS:
                 if audio["id"] == material_id:
-                    audio["name"] = name
+                    if name is not None:
+                        audio["name"] = name
+                    if duration is not None:
+                        audio["duration"] = duration
+                    if path is not None:
+                        audio["path"] = path
                     save_mock_audios()
-                    logger.info(f"更新音频素材: {material_id}")
+                    logger.info(f"更新音频素材: {material_id}, duration={duration}, path={path}")
                     return DeleteResponse(code=200, message="素材更新成功")
             raise HTTPException(status_code=404, detail="音频不存在")
         else:

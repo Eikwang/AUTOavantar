@@ -33,6 +33,32 @@ class MediaClipService:
         """将Windows反斜杠路径转换为正斜杠"""
         return file_path.replace("\\", "/")
 
+    def _resolve_path(self, file_path: str) -> Path:
+        """将相对路径解析为绝对路径
+
+        smart_cut 产生的路径 (temp/) 相对于 backend 目录，
+        uploads/data 路径也相对于 backend 目录，
+        其他路径视为绝对路径或已解析路径。
+        """
+        normalized = self._normalize_path(file_path)
+        if normalized.startswith("backend/"):
+            return self.base_dir / normalized
+        elif normalized.startswith("temp/") or normalized.startswith("uploads/") or normalized.startswith("data/"):
+            return self.backend_dir / normalized
+        else:
+            return Path(normalized)
+
+    def _to_relative_path(self, abs_path: Path) -> str:
+        """将绝对路径转换为相对路径
+
+        优先尝试相对于 backend_dir（覆盖 temp/、uploads/、data/ 路径），
+        回退到相对于 base_dir（覆盖 backend/ 路径）。
+        """
+        try:
+            return str(abs_path.relative_to(self.backend_dir)).replace("\\", "/")
+        except ValueError:
+            return str(abs_path.relative_to(self.base_dir)).replace("\\", "/")
+
     def get_video_info(self, video_path: str) -> Dict[str, Any]:
         """
         获取视频信息（使用 ffprobe）
@@ -43,15 +69,7 @@ class MediaClipService:
         Returns:
             包含视频信息的字典：duration, fps, width, height, total_frames
         """
-        # 解析路径（先标准化反斜杠）
-        video_path = self._normalize_path(video_path)
-        if video_path.startswith("backend/"):
-            full_path = self.base_dir / video_path
-        elif video_path.startswith("uploads/") or video_path.startswith("data/"):
-            # uploads/ 和 data/ 路径相对于 backend 目录
-            full_path = self.backend_dir / video_path
-        else:
-            full_path = Path(video_path)
+        full_path = self._resolve_path(video_path)
 
         if not full_path.exists():
             raise ValueError(f"视频文件不存在：{video_path}")
@@ -111,14 +129,7 @@ class MediaClipService:
         Returns:
             包含音频信息的字典：duration, sample_rate, channels
         """
-        # 解析路径（先标准化反斜杠）
-        audio_path = self._normalize_path(audio_path)
-        if audio_path.startswith("backend/"):
-            full_path = self.base_dir / audio_path
-        elif audio_path.startswith("uploads/") or audio_path.startswith("data/"):
-            full_path = self.backend_dir / audio_path
-        else:
-            full_path = Path(audio_path)
+        full_path = self._resolve_path(audio_path)
 
         if not full_path.exists():
             raise ValueError(f"音频文件不存在：{audio_path}")
@@ -180,15 +191,7 @@ class MediaClipService:
         Returns:
             剪辑结果：{success: bool, output_path: str, duration: float}
         """
-        # 解析路径（先标准化反斜杠）
-        video_path = self._normalize_path(video_path)
-        if video_path.startswith("backend/"):
-            full_path = self.base_dir / video_path
-        elif video_path.startswith("uploads/") or video_path.startswith("data/"):
-            # uploads/ 和 data/ 路径相对于 backend 目录
-            full_path = self.backend_dir / video_path
-        else:
-            full_path = Path(video_path)
+        full_path = self._resolve_path(video_path)
 
         if not full_path.exists():
             raise ValueError(f"视频文件不存在：{video_path}")
@@ -200,10 +203,7 @@ class MediaClipService:
             temp_path = full_path.with_suffix(".temp.mp4")
             output_for_ffmpeg = str(temp_path)
         elif output_path:
-            if output_path.startswith("backend/"):
-                output_for_ffmpeg = str(self.base_dir / output_path)
-            else:
-                output_for_ffmpeg = output_path
+            output_for_ffmpeg = str(self._resolve_path(output_path))
         else:
             # 默认在原路径添加_clip 后缀
             output_for_ffmpeg = str(full_path.with_name(f"{full_path.stem}_clip{full_path.suffix}"))
@@ -245,8 +245,8 @@ class MediaClipService:
         # 获取剪辑后的时长
         clip_duration = end_time - start_time
 
-        # 将输出路径转换为相对于backend目录的路径
-        output_path_relative = str(Path(output_for_ffmpeg).relative_to(self.backend_dir)).replace("\\", "/")
+        # 将输出路径转换为相对路径
+        output_path_relative = self._to_relative_path(Path(output_for_ffmpeg))
 
         return {
             "success": True,
@@ -277,34 +277,10 @@ class MediaClipService:
         Returns:
             剪辑结果
         """
-        # 解析路径（先标准化反斜杠）
-        audio_path = self._normalize_path(audio_path)
-        if audio_path.startswith("backend/"):
-            full_path = self.base_dir / audio_path
-        elif audio_path.startswith("uploads/") or audio_path.startswith("data/"):
-            full_path = self.backend_dir / audio_path
-        else:
-            full_path = Path(audio_path)
+        full_path = self._resolve_path(audio_path)
 
         if not full_path.exists():
             raise ValueError(f"音频文件不存在：{audio_path}")
-
-        # 确定输出路径
-        if replace_original:
-            output_path = str(full_path)
-            temp_path = full_path.with_suffix(".temp" + full_path.suffix)
-            output_for_ffmpeg = str(temp_path)
-        elif output_path:
-            if output_path.startswith("backend/"):
-                output_for_ffmpeg = str(self.base_dir / output_path)
-            else:
-                output_for_ffmpeg = output_path
-        else:
-            output_for_ffmpeg = str(full_path.with_name(f"{full_path.stem}_clip{full_path.suffix}"))
-
-        # 构建 FFmpeg 命令 - 音频剪辑：-ss在-i之前保证精确seek
-        # 输出使用.m4a格式（AAC编码），避免.mp3与aac编码器不兼容的问题
-        clip_duration = end_time - start_time
 
         # 根据是否替换原文件选择输出路径和格式
         if replace_original:
@@ -316,6 +292,10 @@ class MediaClipService:
             # 如果原文件是mp3，输出改为m4a以兼容aac编码
             if output_for_ffmpeg.endswith('.mp3'):
                 output_for_ffmpeg = output_for_ffmpeg[:-4] + '.m4a'
+
+        # 构建 FFmpeg 命令 - 音频剪辑：-ss在-i之前保证精确seek
+        # 输出使用.m4a格式（AAC编码），避免.mp3与aac编码器不兼容的问题
+        clip_duration = end_time - start_time
 
         cmd = [
             "ffmpeg",
@@ -347,8 +327,8 @@ class MediaClipService:
             output_temp_path.replace(full_path)
             output_for_ffmpeg = str(full_path)
 
-        # 将输出路径转换为相对于backend目录的路径
-        output_path_relative = str(Path(output_for_ffmpeg).relative_to(self.backend_dir)).replace("\\", "/")
+        # 将输出路径转换为相对路径
+        output_path_relative = self._to_relative_path(Path(output_for_ffmpeg))
 
         return {
             "success": True,
@@ -381,15 +361,7 @@ class MediaClipService:
         Returns:
             裁剪结果：{success, output_path, original_width, original_height, crop_x, crop_y, crop_width, crop_height}
         """
-        # 解析路径（先标准化反斜杠）
-        video_path = self._normalize_path(video_path)
-        if video_path.startswith("backend/"):
-            full_path = self.base_dir / video_path
-        elif video_path.startswith("uploads/") or video_path.startswith("data/"):
-            # uploads/ 和 data/ 路径相对于 backend 目录
-            full_path = self.backend_dir / video_path
-        else:
-            full_path = Path(video_path)
+        full_path = self._resolve_path(video_path)
 
         if not full_path.exists():
             raise ValueError(f"视频文件不存在：{video_path}")
@@ -457,8 +429,8 @@ class MediaClipService:
             temp_path.replace(full_path)
             output_for_ffmpeg = str(full_path)
 
-        # 将输出路径转换为相对于backend目录的路径
-        output_path_relative = str(Path(output_for_ffmpeg).relative_to(self.backend_dir)).replace("\\", "/")
+        # 将输出路径转换为相对路径
+        output_path_relative = self._to_relative_path(Path(output_for_ffmpeg))
 
         return {
             "success": True,
@@ -490,14 +462,7 @@ class MediaClipService:
         Returns:
             波形数据：{peaks: [float], duration: float}
         """
-        # 解析路径（先标准化反斜杠）
-        audio_path = self._normalize_path(audio_path)
-        if audio_path.startswith("backend/"):
-            full_path = self.base_dir / audio_path
-        elif audio_path.startswith("uploads/") or audio_path.startswith("data/"):
-            full_path = self.backend_dir / audio_path
-        else:
-            full_path = Path(audio_path)
+        full_path = self._resolve_path(audio_path)
 
         if not full_path.exists():
             raise ValueError(f"音频文件不存在：{audio_path}")
