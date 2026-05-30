@@ -7,6 +7,8 @@ backend/output/
 backend/temp/
 backend/uploads/
 .bg-shell/
+.codegraph/
+
 
 __pycache__/
 .claude/
@@ -48,6 +50,8 @@ data/
 
 # Trae
 .trae/
+.pytest_cache/
+
 
 # Claude
 .claude/settings.local.json
