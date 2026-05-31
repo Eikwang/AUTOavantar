@@ -21,6 +21,7 @@ from config.settings import settings
 from business.preprocess.video_preprocessor import VideoPreprocessor
 from business.audio.gtcrn_denoiser import GTCDenoiser
 from api.services.llm_service import LLMScriptGenerator, create_script_generator
+from api.services.database import get_database_service
 
 logger = logging.getLogger("autoavantar-api.functions")
 
@@ -1007,7 +1008,7 @@ async def generate_script(request: GenerateScriptRequest):
                 final_prompt = f"根据主题{topic}生成双人对话文案，包含开场、左边说话人、右边说话人、情绪标签、场景标签、结束部分。请以 JSON 格式返回。"
         
         result = await generator.generate(final_prompt)
-        
+
         # 确保返回的是有效的JSON字符串
         try:
             # 验证JSON格式
@@ -1016,6 +1017,13 @@ async def generate_script(request: GenerateScriptRequest):
         except json.JSONDecodeError:
             # 如果不是有效的JSON，返回错误
             raise HTTPException(status_code=500, detail="生成的文案格式错误")
+
+        # 保存到历史记录
+        try:
+            db = get_database_service()
+            await db.script_history_create(user_input=topic, script_content=script)
+        except Exception as e:
+            logger.warning(f"保存文案历史记录失败: {e}")
 
         return {
             "code": 200,
@@ -1122,3 +1130,109 @@ async def open_output_dir():
     except Exception as e:
         logger.error(f"打开输出目录失败: {e}")
         raise HTTPException(status_code=500, detail=f"打开输出目录失败: {str(e)}")
+
+
+# ============================================================================
+# 文案生成历史记录接口
+# ============================================================================
+
+class ScriptHistoryResponse(BaseModel):
+    code: int = 200
+    message: str = "success"
+    data: Optional[Any] = None
+
+
+@router.get("/script-history", response_model=ScriptHistoryResponse)
+async def get_script_history(limit: int = 100, offset: int = 0):
+    """
+    获取文案生成历史记录列表
+
+    Args:
+        limit: 返回数量限制，默认 100
+        offset: 偏移量，默认 0
+
+    Returns:
+        历史记录列表，按时间倒序
+    """
+    try:
+        db = get_database_service()
+        records, total = await db.script_history_list(limit=limit, offset=offset)
+
+        # 格式化返回数据，只返回必要字段
+        items = [
+            {
+                "id": r["id"],
+                "user_input": r["user_input"],
+                "script_content": r["script_content"],
+                "created_at": r["created_at"]
+            }
+            for r in records
+        ]
+
+        return ScriptHistoryResponse(
+            code=200,
+            message="获取成功",
+            data={
+                "items": items,
+                "total": total,
+                "limit": limit,
+                "offset": offset
+            }
+        )
+    except Exception as e:
+        logger.error(f"获取文案历史记录失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取历史记录失败: {str(e)}")
+
+
+@router.delete("/script-history/{history_id}", response_model=ScriptHistoryResponse)
+async def delete_script_history(history_id: int):
+    """
+    删除单条文案历史记录
+
+    Args:
+        history_id: 历史记录 ID
+
+    Returns:
+        删除结果
+    """
+    try:
+        db = get_database_service()
+        success = await db.script_history_delete(history_id)
+
+        if success:
+            return ScriptHistoryResponse(
+                code=200,
+                message="删除成功",
+                data={"id": history_id}
+            )
+        else:
+            return ScriptHistoryResponse(
+                code=404,
+                message="记录不存在",
+                data={"id": history_id}
+            )
+    except Exception as e:
+        logger.error(f"删除文案历史记录失败: {e}")
+        raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
+
+
+@router.post("/script-history/clear", response_model=ScriptHistoryResponse)
+async def clear_script_history():
+    """
+    清空所有文案历史记录
+
+    Returns:
+        清空结果
+    """
+    try:
+        db = get_database_service()
+        deleted_count = await db.script_history_clear()
+
+        return ScriptHistoryResponse(
+            code=200,
+            message="清空成功",
+            data={"deleted_count": deleted_count}
+        )
+    except Exception as e:
+        logger.error(f"清空文案历史记录失败: {e}")
+        raise HTTPException(status_code=500, detail=f"清空失败: {str(e)}")

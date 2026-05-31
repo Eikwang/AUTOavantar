@@ -38,7 +38,12 @@ export const taskApi = {
 
   // 生成文案
   generateScript: (data) => request.post('/api/generate-script', data),
-  
+
+  // 文案生成历史记录
+  getScriptHistory: (limit = 100, offset = 0) => request.get(`/api/script-history?limit=${limit}&offset=${offset}`),
+  deleteScriptHistory: (historyId) => request.delete(`/api/script-history/${historyId}`),
+  clearScriptHistory: () => request.post('/api/script-history/clear'),
+
   // 提取音频
   extractAudio: (videoPath) => request.post(`/api/tasks/extract-audio?video_path=${encodeURIComponent(videoPath)}`),
   

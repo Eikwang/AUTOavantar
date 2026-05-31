@@ -276,7 +276,12 @@ class LocalCoverGenerator:
             return output_path
 
         except Exception as e:
+            error_msg = str(e)
             logger.error(f"封面生成失败：{e}")
+            # 检测 CUDA 架构不兼容错误，提供更明确的提示
+            if "no kernel image is available" in error_msg or "CUDA error" in error_msg:
+                logger.error("提示：当前显卡不支持 INT4 量化模型，仅支持 RTX 20 系列及以上显卡（SM 7.0+）")
+                logger.error("可选方案：1) 使用支持 CUDA 7.0+ 的显卡；2) 等待后续版本支持更多显卡架构")
             import traceback
             logger.error(traceback.format_exc())
             return None

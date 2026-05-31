@@ -21,6 +21,7 @@ from business.llm.llm_generator import LLMScriptGenerator
 from business.audio import AudioProcessor, create_audio_processor
 from business.video import VideoSynthesizer, create_video_synthesizer
 from business.postprocess import PostProcessor, create_post_processor
+from api.services.database import get_database_service
 
 logger = logging.getLogger(__name__)
 
@@ -1227,6 +1228,15 @@ class DigitalHumanWorkflow:
         try:
             result = self.llm_generator.generate_sync(prompt)
             logger.info(f"LLM 生成文案成功，长度: {len(result) if result else 0}")
+
+            # 保存到历史记录
+            if result:
+                try:
+                    db = get_database_service()
+                    asyncio.create_task(db.script_history_create(user_input=topic, script_content=result))
+                except Exception as e:
+                    logger.warning(f"保存文案历史记录失败: {e}")
+
             return result
         except Exception as e:
             logger.error(f"LLM 调用失败: {e}")

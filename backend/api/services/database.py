@@ -186,6 +186,17 @@ class DatabaseService:
         await cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
         await cursor.execute("CREATE INDEX IF NOT EXISTS idx_history_task ON task_history(task_id)")
 
+        # 文案生成历史记录表
+        await cursor.execute("""
+            CREATE TABLE IF NOT EXISTS script_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_input VARCHAR(500) NOT NULL,
+                script_content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await cursor.execute("CREATE INDEX IF NOT EXISTS idx_script_history_created ON script_history(created_at DESC)")
+
         # 智能裁剪任务表
         await cursor.execute("""
             CREATE TABLE IF NOT EXISTS smart_cut_tasks (
@@ -997,6 +1008,76 @@ class DatabaseService:
             )
             row = await cursor.fetchone()
             return dict(row) if row else None
+
+    # ==================== 文案生成历史记录相关方法 ====================
+
+    async def script_history_create(
+        self,
+        user_input: str,
+        script_content: str
+    ) -> int:
+        """��建文案生成历史记录"""
+        async with self.get_connection() as conn:
+            cursor = await conn.cursor()
+            now = datetime.now().isoformat()
+
+            await cursor.execute("""
+                INSERT INTO script_history (user_input, script_content, created_at)
+                VALUES (?, ?, ?)
+            """, (user_input, script_content, now))
+
+            await conn.commit()
+            logger.info(f"文案历史记录创建成功: user_input={user_input[:50]}...")
+            return cursor.lastrowid
+
+    async def script_history_list(
+        self,
+        limit: int = 100,
+        offset: int = 0
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """获取文案生成历史记录列表"""
+        async with self.get_connection() as conn:
+            cursor = await conn.cursor()
+
+            # 获取总数
+            await cursor.execute("SELECT COUNT(*) FROM script_history")
+            total = (await cursor.fetchone())[0]
+
+            # 获取分页数据，按时间倒序
+            await cursor.execute(
+                """SELECT * FROM script_history
+                   ORDER BY created_at DESC LIMIT ? OFFSET ?""",
+                (limit, offset)
+            )
+
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows], total
+
+    async def script_history_delete(self, history_id: int) -> bool:
+        """删除单条文案历史记录"""
+        async with self.get_connection() as conn:
+            cursor = await conn.cursor()
+            await cursor.execute(
+                "DELETE FROM script_history WHERE id = ?",
+                (history_id,)
+            )
+            await conn.commit()
+
+            if cursor.rowcount > 0:
+                logger.info(f"文案历史记录删除成功: id={history_id}")
+                return True
+            return False
+
+    async def script_history_clear(self) -> int:
+        """清空所有文案历史记录"""
+        async with self.get_connection() as conn:
+            cursor = await conn.cursor()
+            await cursor.execute("DELETE FROM script_history")
+            await conn.commit()
+
+            deleted_count = cursor.rowcount
+            logger.info(f"文案历史记录已清空，共删除 {deleted_count} 条")
+            return deleted_count
 
 
 # 全局数据库服务实例

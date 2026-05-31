@@ -894,6 +894,62 @@
         </div>
       </div>
     </el-dialog>
+
+    <!-- 文案历史记录弹窗 -->
+    <el-dialog
+      v-model="showScriptHistoryDialog"
+      title="文案历史记录"
+      width="600px"
+      class="script-history-dialog"
+    >
+      <div class="script-history-header">
+        <el-button
+          type="danger"
+          size="small"
+          :disabled="scriptHistoryList.length === 0"
+          @click="clearAllScriptHistory"
+        >
+          清空
+        </el-button>
+      </div>
+      <div class="script-history-list" v-loading="scriptHistoryLoading">
+        <template v-if="scriptHistoryList.length > 0">
+          <div
+            v-for="item in scriptHistoryList"
+            :key="item.id"
+            class="script-history-item"
+          >
+            <div class="history-item-content">
+              <div class="history-input">
+                <span class="label">输入：</span>
+                <span class="value">{{ item.user_input }}</span>
+              </div>
+              <div class="history-time">
+                <span class="label">时间：</span>
+                <span class="value">{{ formatDate(item.created_at) }}</span>
+              </div>
+            </div>
+            <div class="history-item-actions">
+              <el-button
+                type="primary"
+                size="small"
+                @click="useScriptHistory(item)"
+              >
+                使用
+              </el-button>
+              <el-button
+                type="danger"
+                size="small"
+                @click="deleteScriptHistory(item)"
+              >
+                删除
+              </el-button>
+            </div>
+          </div>
+        </template>
+        <el-empty v-else description="暂无历史记录" />
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -930,6 +986,7 @@ import { useMaterialStore } from '@/stores/materialStore.js'
 import { useSettingsStore } from '@/stores/settingsStore.js'
 import { useTagStore } from '@/stores/tagStore.js'
 import { taskApi, mediaClipApi } from '@/services/api'
+import api from '@/services/api'
 import websocketService from '@/services/websocket'
 import VideoSelectorDialog from '@/components/VideoSelectorDialog.vue'
 import AudioSelectorDialog from '@/components/AudioSelectorDialog.vue'
@@ -952,6 +1009,7 @@ const showVideoSelectorDialog = ref(false)
 const showAudioSelectorDialog = ref(false)
 const showFaceAnalysisDialog = ref(false)
 const showClipDialog = ref(false)  // 剪辑对话框
+const showScriptHistoryDialog = ref(false)  // 文案历史记录弹窗
 const clipItem = ref(null)  // 当前剪辑的媒体项
 const clipMediaType = ref('video')  // 'video' 或 'audio'
 const clipPlayerRef = ref(null)  // 剪辑对话框中的播放器引用
@@ -961,6 +1019,8 @@ const faceAnalysisResult = ref(null)
 const fileInput = ref(null)
 const fileInputAccept = ref('')
 const currentUploadType = ref('')
+const scriptHistoryList = ref([])  // 历史记录列表
+const scriptHistoryLoading = ref(false)  // 加载状态
 
 // 表单数据
 const taskForm = reactive({
@@ -1616,8 +1676,68 @@ const generateScript = async () => {
 }
 
 // 显示文案历史记录
-const showScriptHistory = () => {
-  ElMessage.info('历史记录功能开发中')
+const showScriptHistory = async () => {
+  showScriptHistoryDialog.value = true
+  await loadScriptHistory()
+}
+
+// 加载历史记录列表
+const loadScriptHistory = async () => {
+  scriptHistoryLoading.value = true
+  try {
+    const result = await api.task.getScriptHistory(100, 0)
+    if (result && result.code === 200) {
+      scriptHistoryList.value = result.data.items || []
+    } else {
+      scriptHistoryList.value = []
+    }
+  } catch (error) {
+    console.error('加载历史记录失败:', error)
+    scriptHistoryList.value = []
+  } finally {
+    scriptHistoryLoading.value = false
+  }
+}
+
+// 使用历史记录
+const useScriptHistory = (item) => {
+  taskForm.scriptContent = item.script_content
+  showScriptHistoryDialog.value = false
+  ElMessage.success('已添加到文案输入框')
+}
+
+// 格式化日期时间
+const formatDate = (dateString) => {
+  if (!dateString) return ''
+  const date = new Date(dateString)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}`
+}
+
+// 删除历史记录
+const deleteScriptHistory = async (item) => {
+  try {
+    await api.task.deleteScriptHistory(item.id)
+    scriptHistoryList.value = scriptHistoryList.value.filter(h => h.id !== item.id)
+    ElMessage.success('删除成功')
+  } catch (error) {
+    ElMessage.error('删除失败，请重试')
+  }
+}
+
+// 清空全部历史记录
+const clearAllScriptHistory = async () => {
+  try {
+    await api.task.clearScriptHistory()
+    scriptHistoryList.value = []
+    ElMessage.success('清空成功')
+  } catch (error) {
+    ElMessage.error('清空失败，请重试')
+  }
 }
 
 const isValidScriptJson = (content) => {
@@ -3330,6 +3450,106 @@ const handleTagGroupChange = async (groupId) => {
 
 .dark-theme :deep(.el-color-picker__trigger:hover) {
   border-color: var(--color-text-secondary);
+}
+
+// ==================== 文案历史记录弹窗样式 ====================
+.script-history-dialog {
+  :deep(.el-dialog__header) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  :deep(.el-dialog__body) {
+    padding: 0;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+}
+
+.script-history-header {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--bg-page);
+}
+
+.script-history-list {
+  min-height: 200px;
+  padding: 12px;
+}
+
+.script-history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: var(--color-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+
+    .history-item-actions {
+      opacity: 1;
+    }
+  }
+}
+
+.history-item-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.history-input {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+
+  .label {
+    color: var(--color-text-secondary);
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+
+  .value {
+    color: var(--color-text-primary);
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.history-time {
+  display: flex;
+  align-items: center;
+
+  .label {
+    color: var(--color-text-secondary);
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .value {
+    color: var(--color-text-tertiary);
+    font-size: 12px;
+  }
+}
+
+.history-item-actions {
+  display: flex;
+  gap: 8px;
+  opacity: 0.6;
+  transition: opacity 0.2s;
 }
 
 </style>
