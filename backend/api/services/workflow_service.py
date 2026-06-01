@@ -445,7 +445,12 @@ class WorkflowService:
             transition_effect=kwargs.get("transition_effect", "fade"),
             transition_random=kwargs.get("transition_random", False),
             transition_random_all=kwargs.get("transition_random_all", False),
-            transition_duration=kwargs.get("transition_duration", 0.5)
+            transition_duration=kwargs.get("transition_duration", 0.5),
+            # 画外音参数
+            enable_pip=kwargs.get("enable_pip", False),
+            pip_video_path=kwargs.get("pip_video_path"),
+            pip_left_video_path=kwargs.get("pip_left_video_path"),
+            pip_right_video_path=kwargs.get("pip_right_video_path")
         )
         logger.info(f"TaskConfig 创建完成: tts_speed={tts_speed}, tts_emo_weight={tts_emo_weight}, left_tts_speed={left_tts_speed}, right_tts_speed={right_tts_speed}, left_tts_emo_weight={left_tts_emo_weight}, right_tts_emo_weight={right_tts_emo_weight}, enable_double_mode={enable_double_mode}")
         logger.info(f"转场效果配置: enable_transition={config.enable_transition}, transition_type={config.transition_type}, transition_effect={config.transition_effect}, transition_random={config.transition_random}, transition_random_all={config.transition_random_all}, transition_duration={config.transition_duration}")
@@ -586,6 +591,11 @@ class WorkflowService:
             "transition_random": getattr(config, 'transition_random', False) if config else False,
             "transition_random_all": getattr(config, 'transition_random_all', False) if config else False,
             "transition_duration": getattr(config, 'transition_duration', 0.5) if config else 0.5,
+            # 画外音参数
+            "enable_pip": getattr(config, 'enable_pip', False) if config else False,
+            "pip_video_path": getattr(config, 'pip_video_path', None) if config else None,
+            "pip_left_video_path": getattr(config, 'pip_left_video_path', None) if config else None,
+            "pip_right_video_path": getattr(config, 'pip_right_video_path', None) if config else None,
         }
 
     def _execute_task_callback(self, task_id: str, config: Dict):
@@ -742,7 +752,12 @@ class WorkflowService:
                 scene_tag_group_id=config.get("scene_tag_group_id", getattr(task, 'scene_tag_group_id', None)),
                 cancel_callback=task.cancel_event.is_set if task.cancel_event else None,
                 existing_task_id=task_id,
-                progress_callback=schedule_progress
+                progress_callback=schedule_progress,
+                # 画外音参数
+                enable_pip=config.get("enable_pip", False),
+                pip_video_path=config.get("pip_video_path"),
+                pip_left_video_path=config.get("pip_left_video_path"),
+                pip_right_video_path=config.get("pip_right_video_path")
             )
 
             if result.status == "success":

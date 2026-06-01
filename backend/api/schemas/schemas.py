@@ -114,6 +114,12 @@ class TaskConfig(BaseModel):
     use_llm_generate: bool = Field(default=False, description="是否使用 LLM 生成文案")
     llm_prompt: Optional[str] = Field(None, description="LLM 提示词")
 
+    # 画外音配置
+    enable_pip: bool = Field(default=False, description="是否启用画外音")
+    pip_video_path: Optional[str] = Field(None, description="画外音视频路径")
+    pip_left_video_path: Optional[str] = Field(None, description="画外音左边视频路径")
+    pip_right_video_path: Optional[str] = Field(None, description="画外音右边视频路径")
+
 
 class TaskBase(BaseModel):
     """任务基础模型"""
@@ -208,6 +214,12 @@ class TaskCreateRequest(BaseModel):
     # 标签组 ID
     scene_tag_group_id: Optional[int] = Field(None, description="场景标签组 ID")
 
+    # 画外音配置
+    enable_pip: bool = Field(default=False, description="是否启用画外音功能")
+    pip_video_path: Optional[str] = Field(None, description="画外音视频路径（单人模式）")
+    pip_left_video_path: Optional[str] = Field(None, description="画外音左边视频路径（双人模式）")
+    pip_right_video_path: Optional[str] = Field(None, description="画外音右边视频路径（双人模式）")
+
     @model_validator(mode='after')
     def validate_paths(self):
         """验证所有文件路径的安全性"""
@@ -223,6 +235,10 @@ class TaskCreateRequest(BaseModel):
             ('bgm_path', self.bgm_path, False),
             ('opening_video', self.opening_video, False),
             ('ending_video', self.ending_video, False),
+            # 画外音路径
+            ('pip_video_path', self.pip_video_path, False),
+            ('pip_left_video_path', self.pip_left_video_path, False),
+            ('pip_right_video_path', self.pip_right_video_path, False),
         ]
 
         # 验证可选路径

@@ -223,7 +223,12 @@ class DigitalHumanWorkflow:
         scene_tag_group_id: Optional[int] = None,
         cancel_callback: Optional[callable] = None,
         existing_task_id: Optional[str] = None,
-        progress_callback: Optional[callable] = None
+        progress_callback: Optional[callable] = None,
+        # 画外音参数
+        enable_pip: bool = False,
+        pip_video_path: Optional[str] = None,
+        pip_left_video_path: Optional[str] = None,
+        pip_right_video_path: Optional[str] = None
     ) -> WorkflowResult:
         """
         运行完整的视频生成流程
@@ -300,7 +305,14 @@ class DigitalHumanWorkflow:
                 bgm_path=bgm_path,
                 priority=2
             )
-            
+
+            # 设置画外音参数
+            task.enable_pip = enable_pip
+            task.pip_video_path = pip_video_path
+            task.pip_left_video_path = pip_left_video_path
+            task.pip_right_video_path = pip_right_video_path
+            logger.info(f"设置画外音参数: enable_pip={enable_pip}, pip_video_path={pip_video_path}")
+
             # 如果有 existing_task_id，使用它作为 task_id（无论是否有检查点）
             if existing_task_id:
                 task.task_id = existing_task_id
@@ -1045,6 +1057,20 @@ class DigitalHumanWorkflow:
             if progress_callback:
                 progress_callback(95, build_stage_description("postprocess", 0, 0, None, "merge"))
 
+            # 处理画外音（PIP）功能
+            if task.enable_pip and task.output_video_path:
+                logger.info(f"开始处理画外音: enable_pip={task.enable_pip}")
+                try:
+                    pip_result = await self._process_pip(task, config, progress_callback)
+                    if pip_result and pip_result.get("success"):
+                        task.pip_result_path = pip_result.get("output_path")
+                        task.output_video_path = task.pip_result_path
+                        logger.info(f"画外音处理完成: {task.output_video_path}")
+                    else:
+                        logger.warning(f"画外音处理失败: {pip_result}")
+                except Exception as e:
+                    logger.error(f"画外音处理异常: {e}")
+
             # 任务完成
             task.status = TaskStatus.COMPLETED
             task.progress = 100
@@ -1241,6 +1267,14 @@ class DigitalHumanWorkflow:
             task.right_prompt_audio_path = self._normalize_audio_path(task.right_prompt_audio_path)
         if task.bgm_path:
             task.bgm_path = self._normalize_audio_path(task.bgm_path)
+
+        # 标准化画外音视频路径
+        if task.pip_video_path:
+            task.pip_video_path = self._normalize_video_path(task.pip_video_path)
+        if task.pip_left_video_path:
+            task.pip_left_video_path = self._normalize_video_path(task.pip_left_video_path)
+        if task.pip_right_video_path:
+            task.pip_right_video_path = self._normalize_video_path(task.pip_right_video_path)
 
     def _preprocess_video(self, video_path: str) -> Dict[str, Any]:
         """预处理视频"""
@@ -1928,6 +1962,183 @@ class DigitalHumanWorkflow:
         except Exception as e:
             logger.error(f"获取未完成任务失败：{e}")
             return []
+
+    async def _process_pip(self, task: Task, config: TaskConfig, progress_callback: Optional[callable] = None) -> Dict[str, Any]:
+        """
+        处理画外音（PIP）功能
+        将画外音头像视频叠加到场景视频左下角
+
+        Args:
+            task: 任务对象
+            config: 任务配置
+            progress_callback: 进度回调函数
+
+        Returns:
+            处理结果 {"success": bool, "output_path": str}
+        """
+        logger.info(f"=== 开始画外音处理 ===")
+        logger.info(f"task.enable_pip: {task.enable_pip}")
+        logger.info(f"task.output_video_path: {task.output_video_path}")
+        logger.info(f"task.pip_video_path: {task.pip_video_path}")
+        logger.info(f"task.pip_left_video_path: {task.pip_left_video_path}")
+        logger.info(f"task.pip_right_video_path: {task.pip_right_video_path}")
+
+        # 通知开始画外音处理
+        if progress_callback:
+            progress_callback(95, "画外音处理中...")
+
+        try:
+            # 获取画外音视频路径
+            pip_video_path = None
+
+            # 优先级：任务级别 > 角色级别（如果有）
+            if task.pip_video_path:
+                pip_video_path = self._normalize_video_path(task.pip_video_path)
+            elif task.pip_left_video_path and task.pip_right_video_path:
+                # 双人模式：需要先合并左右头像
+                # 通知阶段：头像合并
+                if progress_callback:
+                    progress_callback(96, "画外音头像合并中...")
+                pip_video_path = await self._merge_pip_avatars(
+                    self._normalize_video_path(task.pip_left_video_path),
+                    self._normalize_video_path(task.pip_right_video_path),
+                    task.task_id
+                )
+            else:
+                logger.warning("画外音视频路径为空，跳过画外音处理")
+                return {"success": False, "error": "No PIP video path"}
+
+            # 检查画外��视频是否存在
+            if not pip_video_path or not os.path.exists(pip_video_path):
+                logger.warning(f"画外音视频不存在: {pip_video_path}")
+                return {"success": False, "error": "PIP video not found"}
+
+            # 获取场景视频路径
+            scene_video_path = task.output_video_path
+            if not scene_video_path or not os.path.exists(scene_video_path):
+                logger.warning(f"场景视频不存在: {scene_video_path}")
+                return {"success": False, "error": "Scene video not found"}
+
+            # 通知阶段：场景叠加
+            if progress_callback:
+                progress_callback(97, "画外音叠加场景中...")
+
+            # 执行画外音合成
+            result = await self._merge_pip_with_scene(
+                scene_video_path=scene_video_path,
+                pip_video_path=pip_video_path,
+                task_id=task.task_id
+            )
+
+            # 通知完成
+            if progress_callback:
+                progress_callback(98, "画外音处理完成")
+
+            logger.info(f"=== 画外音处理完成 ===")
+            return result
+
+        except Exception as e:
+            logger.error(f"画外音处理失败: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
+    async def _merge_pip_avatars(self, left_video: str, right_video: str, task_id: str) -> Optional[str]:
+        """
+        合并双人模式左右画外音头像视频
+
+        Args:
+            left_video: 左边画外音视频路径
+            right_video: 右边画外音视频路径
+            task_id: 任务ID
+
+        Returns:
+            合并后的视频路径
+        """
+        logger.info(f"=== 合并双人画外音头像 ===")
+        logger.info(f"left_video: {left_video}")
+        logger.info(f"right_video: {right_video}")
+
+        try:
+            from business.video.video_synthesizer import VideoSynthesizer
+
+            # 使用已有的 video_synthesizer 实例
+            synthesizer = self.video_synthesizer
+
+            # 获取输出路径
+            output_dir = self.path_manager.merged_dir
+            os.makedirs(output_dir, exist_ok=True)
+            output_path = os.path.join(output_dir, f"pip_dual_{task_id}.mp4")
+
+            # 使用翻转转场合并左右视频（0.5s）
+            result = await synthesizer._merge_left_right_video(
+                left_video_path=left_video,
+                right_video_path=right_video,
+                output_path=output_path,
+                transition_duration=0.5
+            )
+
+            if result and result.get("status") == "success":
+                logger.info(f"双人画外音合并成功: {result.get('video_path')}")
+                return result.get("video_path")
+            else:
+                logger.warning(f"双人画外音合并失败: {result}")
+                return left_video  # 降级返回左边视频
+
+        except Exception as e:
+            logger.error(f"合并双人画外音头像失败: {e}")
+            return left_video  # 降级返回左边视频
+
+    async def _merge_pip_with_scene(
+        self,
+        scene_video_path: str,
+        pip_video_path: str,
+        task_id: str
+    ) -> Dict[str, Any]:
+        """
+        将画外音视频叠加到场景视频左下角
+
+        Args:
+            scene_video_path: 场景视频路径
+            pip_video_path: 画外音视频路径
+            task_id: 任务ID
+
+        Returns:
+            处理结果
+        """
+        logger.info(f"=== 合并画外音与场景视频 ===")
+        logger.info(f"scene_video_path: {scene_video_path}")
+        logger.info(f"pip_video_path: {pip_video_path}")
+
+        try:
+            from business.video.video_synthesizer import VideoSynthesizer
+
+            # 使用已有的 video_synthesizer 实例
+            synthesizer = self.video_synthesizer
+
+            # 获取输出路径
+            output_dir = self.path_manager.merged_dir
+            os.makedirs(output_dir, exist_ok=True)
+            output_path = os.path.join(output_dir, f"pip_result_{task_id}.mp4")
+
+            # 执行画外音叠加（使用圆形遮罩）
+            result = await synthesizer.merge_pip_video(
+                scene_video_path=scene_video_path,
+                pip_video_path=pip_video_path,
+                output_path=output_path,
+                position="bottom-left",
+                pip_size=0.25,  # 画外音占场景视频的 1/4
+                circle_mask=True  # 使用圆形遮罩
+            )
+
+            if result and result.get("status") == "success":
+                logger.info(f"画外音合并成功: {result.get('output_path')}")
+                return {"success": True, "output_path": result.get("output_path")}
+            else:
+                logger.warning(f"画外音合并失败: {result}")
+                return {"success": False, "error": "Merge failed"}
+
+        except Exception as e:
+            logger.error(f"画外音合并失败: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
 
 
 # 便捷函数

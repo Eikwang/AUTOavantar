@@ -159,7 +159,94 @@
                 </div>
               </div>
             </el-form-item>
-            
+
+            <!-- 画外音视频 -->
+            <el-form-item v-if="taskForm.videoParams.enablePip" label="画外音视频">
+              <div class="video-upload-section">
+                <!-- 单人模式 -->
+                <template v-if="!taskForm.videoParams.dualMode">
+                  <div v-if="taskForm.pipVideo" class="video-item">
+                    <div class="video-info">
+                      <el-icon><VideoCamera /></el-icon>
+                      <span class="video-name" :title="taskForm.pipVideo.name">{{ taskForm.pipVideo.name }}</span>
+                      <div class="video-preview">
+                        <video :src="'/api/files/' + taskForm.pipVideo.path + (taskForm.pipVideo.timestamp ? '?t=' + taskForm.pipVideo.timestamp : '')" controls class="preview-video"></video>
+                      </div>
+                    </div>
+                    <div class="video-actions">
+                      <el-button type="warning" link @click="openClipDialog('pip', taskForm.pipVideo, 'video')">
+                        <el-icon><Scissor /></el-icon> 剪辑
+                      </el-button>
+                      <el-button type="primary" link @click="analyzeFace('pip')">
+                        <el-icon><Search /></el-icon> 面部分析
+                      </el-button>
+                      <el-button type="danger" link @click="removePipVideo('single')">
+                        <el-icon><Delete /></el-icon> 移除
+                      </el-button>
+                    </div>
+                  </div>
+                  <div v-else class="upload-buttons">
+                    <el-button type="primary" plain @click="uploadLocalVideo('pip')">
+                      <el-icon><Upload /></el-icon> 上传画外音视频
+                    </el-button>
+                  </div>
+                </template>
+                <!-- 双人模式 -->
+                <template v-else>
+                  <el-row :gutter="20">
+                    <el-col :span="12">
+                      <div class="pip-video-col">
+                        <span class="pip-label">左边说话人</span>
+                        <div v-if="taskForm.pipLeftVideo" class="video-item">
+                          <div class="video-info">
+                            <el-icon><VideoCamera /></el-icon>
+                            <span class="video-name" :title="taskForm.pipLeftVideo.name">{{ taskForm.pipLeftVideo.name }}</span>
+                          </div>
+                          <div class="video-actions">
+                            <el-button type="warning" link @click="openClipDialog('pipLeft', taskForm.pipLeftVideo, 'video')">
+                              <el-icon><Scissor /></el-icon> 剪辑
+                            </el-button>
+                            <el-button type="danger" link @click="removePipVideo('left')">
+                              <el-icon><Delete /></el-icon> 移除
+                            </el-button>
+                          </div>
+                        </div>
+                        <div v-else class="upload-buttons">
+                          <el-button type="primary" plain size="small" @click="uploadLocalVideo('pipLeft')">
+                            <el-icon><Upload /></el-icon> 上传
+                          </el-button>
+                        </div>
+                      </div>
+                    </el-col>
+                    <el-col :span="12">
+                      <div class="pip-video-col">
+                        <span class="pip-label">右边说话人</span>
+                        <div v-if="taskForm.pipRightVideo" class="video-item">
+                          <div class="video-info">
+                            <el-icon><VideoCamera /></el-icon>
+                            <span class="video-name" :title="taskForm.pipRightVideo.name">{{ taskForm.pipRightVideo.name }}</span>
+                          </div>
+                          <div class="video-actions">
+                            <el-button type="warning" link @click="openClipDialog('pipRight', taskForm.pipRightVideo, 'video')">
+                              <el-icon><Scissor /></el-icon> 剪辑
+                            </el-button>
+                            <el-button type="danger" link @click="removePipVideo('right')">
+                              <el-icon><Delete /></el-icon> 移除
+                            </el-button>
+                          </div>
+                        </div>
+                        <div v-else class="upload-buttons">
+                          <el-button type="primary" plain size="small" @click="uploadLocalVideo('pipRight')">
+                            <el-icon><Upload /></el-icon> 上传
+                          </el-button>
+                        </div>
+                      </div>
+                    </el-col>
+                  </el-row>
+                </template>
+              </div>
+            </el-form-item>
+
             <!-- 场景视频 -->
             <el-form-item label="场景视频">
               <div class="video-upload-section">
@@ -225,17 +312,22 @@
             <!-- 视频参数 -->
             <div class="video-params">
               <el-row :gutter="20">
-                <el-col :span="8">
+                <el-col :span="6">
                   <el-form-item label="原始参数">
                     <el-switch v-model="taskForm.videoParams.heygemOriginal" />
                   </el-form-item>
                 </el-col>
-                <el-col :span="8">
+                <el-col :span="6">
+                  <el-form-item label="画外音">
+                    <el-switch v-model="taskForm.videoParams.enablePip" @change="handlePipToggle" />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="6">
                   <el-form-item label="推理批次">
                     <el-input-number v-model="taskForm.videoParams.inferenceSteps" :min="4" :max="32" :step="4" />
                   </el-form-item>
                 </el-col>
-                <el-col :span="8">
+                <el-col :span="6">
                   <el-form-item label="双人模式">
                     <el-switch v-model="taskForm.videoParams.dualMode" @change="handleDualModeChange" />
                   </el-form-item>
@@ -1042,9 +1134,14 @@ const taskForm = reactive({
   // 视频参数
   videoParams: {
     heygemOriginal: true,
+    enablePip: false,
     inferenceSteps: 16,
     dualMode: false
   },
+  // 画外音视频
+  pipVideo: null,
+  pipLeftVideo: null,
+  pipRightVideo: null,
   // 音频参数
   audioParams: {
     ttsSpeed: 1.0,
@@ -1301,6 +1398,17 @@ const removeVideo = (type) => {
   taskForm[type + 'Video'] = null
 }
 
+// 移除画外音视频
+const removePipVideo = (type) => {
+  if (type === 'single') {
+    taskForm.pipVideo = null
+  } else if (type === 'left') {
+    taskForm.pipLeftVideo = null
+  } else if (type === 'right') {
+    taskForm.pipRightVideo = null
+  }
+}
+
 // 移除循环视频
 const removeLoopVideo = (index) => {
   taskForm.loopVideos.splice(index, 1)
@@ -1374,6 +1482,20 @@ const handleDualModeChange = (value) => {
     taskForm.leftAudio = null
     taskForm.rightAudio = null
   }
+  // 切换模式时清空画外音
+  taskForm.pipVideo = null
+  taskForm.pipLeftVideo = null
+  taskForm.pipRightVideo = null
+}
+
+// 画外音开关切换
+const handlePipToggle = (value) => {
+  if (!value) {
+    // 关闭画外音时清空上传的视频
+    taskForm.pipVideo = null
+    taskForm.pipLeftVideo = null
+    taskForm.pipRightVideo = null
+  }
 }
 
 // 媒体剪辑完成处理 — 通过 timestamp 刷新播放器
@@ -1404,6 +1526,12 @@ const handleMediaClipped = (data) => {
     taskForm.leftAudio = { ...taskForm.leftAudio, timestamp }
   } else if (type === 'right' && taskForm.rightAudio) {
     taskForm.rightAudio = { ...taskForm.rightAudio, timestamp }
+  } else if (type === 'pip' && taskForm.pipVideo) {
+    taskForm.pipVideo = { ...taskForm.pipVideo, timestamp }
+  } else if (type === 'pipLeft' && taskForm.pipLeftVideo) {
+    taskForm.pipLeftVideo = { ...taskForm.pipLeftVideo, timestamp }
+  } else if (type === 'pipRight' && taskForm.pipRightVideo) {
+    taskForm.pipRightVideo = { ...taskForm.pipRightVideo, timestamp }
   }
 
   // 关闭剪辑对话框
@@ -1954,6 +2082,15 @@ const handleFileUpload = async (event) => {
       // 自动选择刚上传的BGM
       taskForm.bgmParams.bgmId = newBgm.id
       taskForm.bgm = newBgm
+    } else if (uploadType === 'pip') {
+      // 画外音视频（单人模式）
+      taskForm.pipVideo = uploadedFile
+    } else if (uploadType === 'pipLeft') {
+      // 画外音视频（双人模式-左边）
+      taskForm.pipLeftVideo = uploadedFile
+    } else if (uploadType === 'pipRight') {
+      // 画外音视频（双人模式-右边）
+      taskForm.pipRightVideo = uploadedFile
     } else {
       throw new Error('未知的上传类型')
     }
@@ -2124,6 +2261,42 @@ const selectRole = (role) => {
       ElMessage.info('该角色没有关联参考音频，请手动选择或上传')
     }
   }
+
+  // 5. 自动填充画外音视频
+  if (role.is_double_mode) {
+    // 双人模式：填充左右画外音视频
+    if (role.pip_left_video_path) {
+      taskForm.pipLeftVideo = {
+        id: `pip-left-${role.id}`,
+        name: `${role.name}_画外音左边`,
+        path: role.pip_left_video_path
+      }
+      ElMessage.success('已自动填充画外音左边视频')
+    }
+    if (role.pip_right_video_path) {
+      taskForm.pipRightVideo = {
+        id: `pip-right-${role.id}`,
+        name: `${role.name}_画外音右边`,
+        path: role.pip_right_video_path
+      }
+      ElMessage.success('已自动填充画外音右边视频')
+    }
+    if (!role.pip_left_video_path && !role.pip_right_video_path) {
+      console.log('角色没有画外音视频')
+    }
+  } else {
+    // 单人模式：填充单个画外音视频
+    if (role.pip_video_path) {
+      taskForm.pipVideo = {
+        id: `pip-${role.id}`,
+        name: `${role.name}_画外音`,
+        path: role.pip_video_path
+      }
+      ElMessage.success('已自动填充画外音视频')
+    } else {
+      console.log('角色没有画外音视频')
+    }
+  }
 }
 
 // 提交任务
@@ -2193,7 +2366,13 @@ const submitTask = async (runImmediately) => {
       heygem_steps: taskForm.videoParams.inferenceSteps,
       role_id: taskForm.roleId,
       scene_tag_group_id: taskForm.sceneTagGroupId,
-      
+
+      // 画外音配置
+      enable_pip: taskForm.videoParams.enablePip,
+      pip_video_path: taskForm.pipVideo ? taskForm.pipVideo.path : null,
+      pip_left_video_path: taskForm.pipLeftVideo ? taskForm.pipLeftVideo.path : null,
+      pip_right_video_path: taskForm.pipRightVideo ? taskForm.pipRightVideo.path : null,
+
       // 带标签的视频素材（新接口格式）
       opening_video_with_tags: taskForm.openingVideo ? {
         file_path: taskForm.openingVideo.path,
@@ -2275,6 +2454,7 @@ onMounted(async () => {
     // 从设置中应用默认参数到表单
     const settings = settingsStore.settings
     taskForm.videoParams.heygemOriginal = settings.heygem_original ?? true
+    taskForm.videoParams.enablePip = settings.enable_pip ?? false
     taskForm.videoParams.inferenceSteps = settings.heygem_inference_steps ?? 16
     taskForm.videoParams.dualMode = settings.dual_mode ?? false
     taskForm.audioParams.ttsSpeed = settings.tts_speed ?? 1.0
@@ -2586,6 +2766,19 @@ const handleTagGroupChange = async (groupId) => {
   padding: 15px;
   background: var(--bg-muted);
   border-radius: 4px;
+}
+
+.pip-video-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pip-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-regular);
+  margin-bottom: 5px;
 }
 
 .speaker-params h4 {

@@ -13,7 +13,8 @@ export const useSettingsStore = defineStore('settings', {
       heygem_inference_steps: 16,
       dual_mode: false,
       tts_speed: 1.0,
-      tts_emo_weight: 0.4
+      tts_emo_weight: 0.4,
+      enable_pip: false  // 画外音默认开关
     },
     isLoading: false,
     error: null

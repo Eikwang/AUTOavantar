@@ -149,6 +149,23 @@ async def create_task(
             )
         logger.info(f"未激活用户配额检查通过，剩余配额: {quota_result.remaining}")
 
+    # 画外音校验
+    if request.enable_pip:
+        if request.enable_double_mode:
+            # 双人模式：左右两边画外音视频都必须提供
+            if not request.pip_left_video_path or not request.pip_right_video_path:
+                raise HTTPException(
+                    status_code=422,
+                    detail="双人模式需要同时上传左右两边画外音视频"
+                )
+        else:
+            # 单人模式：至少需要提供画外音视频
+            if not request.pip_video_path:
+                raise HTTPException(
+                    status_code=422,
+                    detail="请上传画外音视频素材"
+                )
+
     try:
         enable_double_mode = request.enable_double_mode
         left_prompt_audio_path = request.left_prompt_audio_path or ""
@@ -227,7 +244,12 @@ async def create_task(
             transition_effect=request.transition_effect,
             transition_random=request.transition_random,
             transition_random_all=request.transition_random_all,
-            transition_duration=request.transition_duration
+            transition_duration=request.transition_duration,
+            # 画外音参数
+            enable_pip=request.enable_pip,
+            pip_video_path=request.pip_video_path,
+            pip_left_video_path=request.pip_left_video_path,
+            pip_right_video_path=request.pip_right_video_path
         )
 
         await register_task_websocket(task.task_id, workflow_service)

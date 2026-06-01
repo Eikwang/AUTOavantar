@@ -319,6 +319,13 @@ class Task:
     right_video_path: Optional[str] = None
     final_video_path: Optional[str] = None  # 双人模式最终合并视频
 
+    # 画外音配置
+    enable_pip: bool = False
+    pip_video_path: Optional[str] = None
+    pip_left_video_path: Optional[str] = None
+    pip_right_video_path: Optional[str] = None
+    pip_result_path: Optional[str] = None  # 画外音合成结果路径
+
     # 元数据
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)

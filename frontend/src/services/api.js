@@ -85,6 +85,10 @@ export const materialApi = {
       if (data.is_double_mode) {
         params.left_audio_id = data.left_audio_id
         params.right_audio_id = data.right_audio_id
+        if (data.pip_left_video_path) params.pip_left_video_path = data.pip_left_video_path
+        if (data.pip_right_video_path) params.pip_right_video_path = data.pip_right_video_path
+      } else {
+        if (data.pip_video_path) params.pip_video_path = data.pip_video_path
       }
     }
     if (data.type === 'scene') {
@@ -115,6 +119,10 @@ export const materialApi = {
       if (data.is_double_mode) {
         params.left_audio_id = data.left_audio_id
         params.right_audio_id = data.right_audio_id
+        if (data.pip_left_video_path) params.pip_left_video_path = data.pip_left_video_path
+        if (data.pip_right_video_path) params.pip_right_video_path = data.pip_right_video_path
+      } else {
+        if (data.pip_video_path) params.pip_video_path = data.pip_video_path
       }
     }
     if (data.type === 'scene') {

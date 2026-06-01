@@ -118,6 +118,7 @@ class DefaultParamsRequest(BaseModel):
     tts_speed: float = 1.0
     tts_emo_weight: float = 0.4
     enable_precise_subtitle: bool = False
+    enable_pip: bool = False  # 画外音默认开关
 
 
 class ThemeRequest(BaseModel):
@@ -137,6 +138,7 @@ class SettingsData(BaseModel):
     dual_mode: bool = False
     tts_speed: float = 1.0
     tts_emo_weight: float = 0.4
+    enable_pip: bool = False  # 画外音默认开关
 
 
 class SettingsResponse(BaseModel):

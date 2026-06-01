@@ -215,6 +215,11 @@
               </span>
             </el-form-item>
 
+            <el-form-item label="画外音" class="full-width">
+              <el-switch v-model="settingsStore.settings.enable_pip" />
+              <span class="form-hint">开启后在场景视频左下角显示说话人头像</span>
+            </el-form-item>
+
             <el-form-item label="HeyGEM 推理批次" class="full-width">
               <el-slider
                 v-model="settingsStore.settings.heygem_inference_steps"
@@ -501,7 +506,8 @@ const saveDefaultParams = async () => {
       dual_mode: settingsStore.settings.dual_mode,
       tts_speed: settingsStore.settings.tts_speed,
       tts_emo_weight: settingsStore.settings.tts_emo_weight,
-      enable_precise_subtitle: settingsStore.settings.enable_precise_subtitle
+      enable_precise_subtitle: settingsStore.settings.enable_precise_subtitle,
+      enable_pip: settingsStore.settings.enable_pip
     })
     ElMessage.success('默认参数已保存')
   } catch (error) {

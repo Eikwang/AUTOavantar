@@ -11,11 +11,13 @@ import time
 import shutil
 import random
 import tempfile
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
+from math import gcd
 
 from core.models.task import ScriptSegment, Task, TaskConfig
 from core.paths import get_path_manager
+from core.utils.video_utils import calculate_aspect_ratio, calculate_aspect_ratio_error
 
 from api.utils.async_subprocess import async_run_subprocess, async_run_ffmpeg, async_run_ffprobe
 
@@ -1911,7 +1913,86 @@ class VideoSynthesizer:
         except Exception as e:
             logger.error(f"合并左右音频时发生异常: {e}")
             return None
-    
+
+    async def _merge_left_right_video(
+        self,
+        left_video_path: str,
+        right_video_path: str,
+        output_path: str,
+        transition_duration: float = 0.5
+    ) -> Dict[str, Any]:
+        """
+        使用翻转转场合并左右两个视频（双人模式画外音）
+
+        Args:
+            left_video_path: 左边视频路径
+            right_video_path: 右边视频路径
+            output_path: 输出路径
+            transition_duration: 转场时长（秒）
+
+        Returns:
+            {"status": "success"/"failed", "video_path": str}
+        """
+        logger.info(f"=== 合并左右画外音视频 ===")
+        logger.info(f"左边视频: {left_video_path}")
+        logger.info(f"右边视频: {right_video_path}")
+        logger.info(f"输出路径: {output_path}")
+        logger.info(f"转场时长: {transition_duration}s")
+
+        try:
+            # 获取两个视频的信息
+            left_info = await self._get_video_info(left_video_path)
+            right_info = await self._get_video_info(right_video_path)
+
+            if not left_info or not right_info:
+                logger.error("无法获取视频信息")
+                return {"status": "failed", "error": "Cannot get video info"}
+
+            # 使用较短的视频时长
+            duration = min(left_info['duration'], right_info['duration'])
+            width = left_info['width']
+            height = left_info['height']
+
+            # 确保转场时长不超过视频时长的一半
+            actual_transition = min(transition_duration, duration * 0.5)
+            offset = max(0, duration - actual_transition)
+
+            logger.info(f"视频信息: {width}x{height}, 时长: {duration}s, 转场: {actual_transition}s, offset: {offset}s")
+
+            # 使用 xfade 转场合并左右视频，保留左边视频的音频
+            cmd = [
+                "ffmpeg",
+                "-i", left_video_path,
+                "-i", right_video_path,
+                "-filter_complex",
+                f"[0:v]trim=duration={duration},setpts=PTS-STARTPTS[left];"
+                f"[1:v]trim=duration={duration},setpts=PTS-STARTPTS[right];"
+                f"[left][right]xfade=transition=fade:duration={actual_transition}:offset={offset},"
+                f"scale={width}:{height}[outv]",
+                "-map", "[outv]",
+                "-map", "0:a?",
+                "-c:v", "libx264",
+                "-c:a", "aac",
+                "-preset", "fast",
+                "-crf", "23",
+                output_path
+            ]
+
+            logger.info(f"执行左右视频合并命令")
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd, timeout=600)
+
+            if returncode == 0 and os.path.exists(output_path):
+                logger.info(f"左右视频合并成功: {output_path}")
+                return {"status": "success", "video_path": output_path}
+            else:
+                stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+                logger.error(f"左右视频合并失败: {stderr_text}")
+                return {"status": "failed", "error": stderr_text}
+
+        except Exception as e:
+            logger.error(f"左右视频合并异常: {e}", exc_info=True)
+            return {"status": "failed", "error": str(e)}
+
     async def _merge_audio_video(
         self,
         video_path: str,
@@ -2049,6 +2130,63 @@ class VideoSynthesizer:
         
         return False
 
+    def _calculate_target_size_with_aspect_ratio(
+        self,
+        video_sizes: List[Tuple[int, int]],
+        error_threshold: float = 10.0
+    ) -> Tuple[int, int]:
+        """
+        根据画面比例计算目标尺寸
+
+        逻辑：
+        1. 找出所有视频中最大的宽高（取最大分辨率）
+        2. 计算最大分辨率视频的宽高比作为基准比例
+        3. 如果其他视频的比例与基准比例误差小于 threshold，使用拉伸缩放
+        4. 如果比例误差超过 threshold，使用填充缩放（以基准比例为标准）
+
+        Args:
+            video_sizes: [(width, height), ...] 视频尺寸列表
+            error_threshold: 比例误差阈值（默认10%）
+
+        Returns:
+            (target_width, target_height) 目标尺寸
+        """
+        if not video_sizes:
+            return (1920, 1080)
+
+        # 找出最大分辨率的视频尺寸
+        max_area = 0
+        max_size = (1920, 1080)
+        for w, h in video_sizes:
+            area = w * h
+            if area > max_area:
+                max_area = area
+                max_size = (w, h)
+
+        target_width, target_height = max_size
+        base_ratio = calculate_aspect_ratio(target_width, target_height)
+
+        logger.info(f"基准尺寸: {target_width}x{target_height}, 基准比例: {base_ratio:.4f}")
+
+        # 检查是否所有视频比例都接近基准比例
+        all_close_ratio = True
+        for w, h in video_sizes:
+            if w == 0 or h == 0:
+                continue
+            ratio = calculate_aspect_ratio(w, h)
+            error = calculate_aspect_ratio_error(ratio, base_ratio)
+            if error > error_threshold:
+                all_close_ratio = False
+                logger.info(f"视频尺寸 {w}x{h} 比例 {ratio:.4f} 与基准比例误差 {error:.2f}% > {error_threshold}%，需要填充缩放")
+                break
+
+        if all_close_ratio:
+            logger.info(f"所有视频比例相近（误差<{error_threshold}%），使用拉伸缩放")
+        else:
+            logger.info(f"存在比例差异较大的视频，使用填充缩放保持比例")
+
+        return (target_width, target_height)
+
     async def _normalize_video(self, input_path: str, output_path: str) -> bool:
         """
         标准化视频（统一编码、帧率）
@@ -2105,9 +2243,13 @@ class VideoSynthesizer:
             logger.error(f"视频标准化异常: {e}")
             return False
 
-    async def _normalize_video_with_resolution(self, input_path: str, output_path: str, target_width: int, target_height: int, target_fps: float) -> bool:
+    async def _normalize_video_with_resolution(self, input_path: str, output_path: str, target_width: int, target_height: int, target_fps: float, error_threshold: float = 10.0) -> bool:
         """
-        标准化视频（统一分辨率、编码、帧率）
+        标准化视频（统一分辨率、编码、帧率），根据画面比例智能选择缩放方式
+
+        缩放策略：
+        - 比例误差 <= error_threshold: 拉伸缩放（scale 到目标尺寸，允许轻微变形）
+        - 比例误差 > error_threshold: 填充缩放（等比缩放后，用模糊填充补齐到目标尺寸）
 
         Args:
             input_path: 输入视频路径
@@ -2115,21 +2257,54 @@ class VideoSynthesizer:
             target_width: 目标宽度
             target_height: 目标高度
             target_fps: 目标帧率
+            error_threshold: 比例误差阈值（默认10%），超过此值使用填充缩放
 
         Returns:
             是否成功
         """
         try:
-            # 使用 scale 滤镜缩放视频，同时统一编码和帧率
-            # scale 参数：force_original_aspect_ratio=decrease 保持宽高比，不超过目标尺寸
-            # pad 参数：填充到目标尺寸
-            scale_filter = f"scale={target_width}:{target_height}:force_original_aspect_ratio=decrease,pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:black"
+            # 获取输入视频的实际尺寸
+            video_info = await self._get_video_info(input_path)
+            if not video_info:
+                logger.warning(f"无法获取视频信息，使用默认拉伸缩放: {input_path}")
+                scale_filter = f"scale={target_width}:{target_height}"
+            else:
+                src_width = video_info.get("width", 0)
+                src_height = video_info.get("height", 0)
+                target_ratio = calculate_aspect_ratio(target_width, target_height)
+                src_ratio = calculate_aspect_ratio(src_width, src_height)
+                ratio_error = calculate_aspect_ratio_error(src_ratio, target_ratio)
 
-            # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
+                if src_width == target_width and src_height == target_height:
+                    # 尺寸完全一致，只需统一编码和帧率
+                    scale_filter = None
+                    logger.info(f"视频尺寸已一致 {src_width}x{src_height}，仅统一编码帧率")
+                elif ratio_error <= error_threshold:
+                    # 比例误差小，拉伸缩放
+                    scale_filter = f"scale={target_width}:{target_height}"
+                    logger.info(f"视频 {src_width}x{src_height} 比例误差 {ratio_error:.2f}% <= {error_threshold}%，拉伸缩放到 {target_width}x{target_height}")
+                else:
+                    # 比例误差大，填充缩放：等比缩放 + 模糊背景填充
+                    # 先缩放视频到目标尺寸（拉伸），作为模糊背景层
+                    # 再等比缩放视频（保持比例），叠加在模糊背景上居中
+                    scale_filter = (
+                        f"split[original][bg];"
+                        f"[bg]scale={target_width}:{target_height}:force_original_aspect_ratio=increase,"
+                        f"boxblur=50:5,format=yuv420p[blurred_bg];"
+                        f"[original]scale={target_width}:{target_height}:force_original_aspect_ratio=decrease,"
+                        f"format=yuv420p[fg];"
+                        f"[blurred_bg][fg]overlay=(W-w)/2:(H-h)/2"
+                    )
+                    logger.info(f"视频 {src_width}x{src_height} 比例误差 {ratio_error:.2f}% > {error_threshold}%，填充缩放到 {target_width}x{target_height}")
+
+            # 构建 ffmpeg 命令
             cmd = [
                 "ffmpeg",
                 "-i", input_path,
-                "-vf", scale_filter,
+            ]
+            if scale_filter:
+                cmd.extend(["-vf", scale_filter])
+            cmd.extend([
                 "-r", str(target_fps),
                 "-c:v", "libx264",
                 "-preset", "medium",
@@ -2138,7 +2313,7 @@ class VideoSynthesizer:
                 "-b:a", "192k",
                 "-movflags", "+faststart",
                 output_path
-            ]
+            ])
 
             logger.info(f"执行视频标准化（分辨率: {target_width}x{target_height}, 帧率: {target_fps}）: {' '.join(cmd)}")
             returncode, stdout, stderr = await async_run_ffmpeg(cmd, timeout=600)
@@ -2157,6 +2332,113 @@ class VideoSynthesizer:
         except Exception as e:
             logger.error(f"视频标准化异常: {e}")
             return False
+
+    async def merge_pip_video(
+        self,
+        scene_video_path: str,
+        pip_video_path: str,
+        output_path: str,
+        position: str = "bottom-left",
+        pip_size: float = 0.25,
+        circle_mask: bool = True
+    ) -> Dict[str, Any]:
+        """
+        将画外音视频叠加到场景视频指定位置
+
+        Args:
+            scene_video_path: 场景视频路径
+            pip_video_path: 画外音视频路径
+            output_path: 输出路径
+            position: 位置（bottom-left, bottom-right, top-left, top-right）
+            pip_size: 画外音相对场景视频的大小比例（0.0-1.0）
+            circle_mask: 是否使用圆形遮罩
+
+        Returns:
+            {"status": "success"/"failed", "output_path": str}
+        """
+        logger.info(f"=== 画外音叠加开始 ===")
+        logger.info(f"场景视频: {scene_video_path}")
+        logger.info(f"画外音视频: {pip_video_path}")
+        logger.info(f"输出路径: {output_path}")
+        logger.info(f"位置: {position}, 大小: {pip_size}, 圆形遮罩: {circle_mask}")
+
+        try:
+            # 获取场景视频信息
+            scene_info = await self._get_video_info(scene_video_path)
+            if not scene_info:
+                raise ValueError("无法获取场景视频信息")
+
+            scene_width = scene_info['width']
+            scene_height = scene_info['height']
+            scene_duration = scene_info['duration']
+
+            logger.info(f"场景视频信息: {scene_width}x{scene_height}, 时长: {scene_duration}s")
+
+            # 计算画外音尺寸（正方形，取宽高中较小者的 pip_size 比例），最小 64 像素
+            pip_size_px = max(64, int(min(scene_width, scene_height) * pip_size))
+
+            # 计算画外音位置
+            margin_x = int(scene_width * 0.05)
+            margin_y = int(scene_height * 0.05)
+
+            if position == "bottom-left":
+                pip_x = margin_x
+                pip_y = scene_height - pip_size_px - margin_y
+            elif position == "bottom-right":
+                pip_x = scene_width - pip_size_px - margin_x
+                pip_y = scene_height - pip_size_px - margin_y
+            elif position == "top-left":
+                pip_x = margin_x
+                pip_y = margin_y
+            elif position == "top-right":
+                pip_x = scene_width - pip_size_px - margin_x
+                pip_y = margin_y
+            else:
+                pip_x = margin_x
+                pip_y = scene_height - pip_size_px - margin_y
+
+            logger.info(f"画外音位置: x={pip_x}, y={pip_y}, 尺寸={pip_size_px}x{pip_size_px}")
+
+            if circle_mask:
+                # 圆形遮罩方式：先缩放画外音，用 geq 生成圆形 alpha 遮罩
+                pip_filter = (
+                    f"[1:v]scale={pip_size_px}:{pip_size_px},format=yuva420p,"
+                    f"geq='if(gt(abs(X-{pip_size_px}/2)*abs(X-{pip_size_px}/2)+abs(Y-{pip_size_px}/2)*abs(Y-{pip_size_px}/2),"
+                    f"({pip_size_px}/2-5)*({pip_size_px}/2-5)),0,255)':128:128[pip]"
+                )
+            else:
+                pip_filter = f"[1:v]scale={pip_size_px}:{pip_size_px}[pip]"
+
+            # 使用 overlay 滤镜叠加画外音，保留场景视频音频
+            cmd = [
+                "ffmpeg",
+                "-i", scene_video_path,
+                "-i", pip_video_path,
+                "-filter_complex", f"{pip_filter};[0:v][pip]overlay={pip_x}:{pip_y}[outv]",
+                "-map", "[outv]",
+                "-map", "0:a?",
+                "-c:v", "libx264",
+                "-c:a", "aac",
+                "-preset", "fast",
+                "-crf", "23",
+                "-t", str(scene_duration),
+                output_path
+            ]
+
+            logger.info(f"执行画外音叠加命令")
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd, timeout=600)
+
+            if returncode == 0 and os.path.exists(output_path):
+                logger.info(f"画外音叠加成功: {output_path}")
+                return {"status": "success", "output_path": output_path}
+            else:
+                stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+                logger.error(f"画外音叠加失败: {stderr_text}")
+                return {"status": "failed", "error": stderr_text}
+
+        except Exception as e:
+            logger.error(f"画外音叠加异常: {e}", exc_info=True)
+            return {"status": "failed", "error": str(e)}
 
     def close(self):
         """关闭合成器"""

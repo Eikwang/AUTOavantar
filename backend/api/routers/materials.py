@@ -255,6 +255,10 @@ class RoleInfo(BaseModel):
     right_audio_id: Optional[str] = None
     left_audio_name: Optional[str] = None
     right_audio_name: Optional[str] = None
+    # 画外音字段
+    pip_video_path: Optional[str] = None
+    pip_left_video_path: Optional[str] = None
+    pip_right_video_path: Optional[str] = None
 
 
 class SceneInfo(BaseModel):
@@ -663,78 +667,45 @@ async def get_bgm(bgm_id: str):
 
 
 @router.post("/materials", response_model=DeleteResponse)
-async def create_material(
-    type: str = Query(..., description="素材类型: role/scene/bgm/audio"),
-    name: str = Query(..., description="素材名称"),
-    role_type: str = Query(None, description="角色种类"),
-    scenes: List[str] = Query(None, description="适用场景"),
-    audio_path: str = Query(None, description="音频文件路径（仅音频类型使用）"),
-    bgm_path: str = Query(None, description="BGM文件路径（仅BGM类型使用）"),
-    audio_clips: str = Query(None, description="音频剪辑列表（JSON格式，仅音频类型使用）"),
-    duration: float = Query(0.0, description="音频时长（仅音频类型使用）"),
-    opening_video: str = Query(None, description="开场视频路径（仅角色类型使用）"),
-    loop_videos: str = Query(None, description="循环视频列表（JSON格式，仅角色类型使用）"),
-    ending_video: str = Query(None, description="结尾视频路径（仅角色类型使用）"),
-    audio_id: str = Query(None, description="音频ID（仅角色类型使用）"),
-    scene_videos: str = Query(None, description="场景视频列表（JSON格式，仅场景类型使用）"),
-    is_double_mode: bool = Query(False, description="是否开启双人模式（仅角色类型使用）"),
-    left_audio_id: str = Query(None, description="左边说话人参考音频ID（双人模式）"),
-    right_audio_id: str = Query(None, description="右边说话人参考音频ID（双人模式）")
-):
+async def create_material(data: dict = Body(...)):
     """
-    创建素材
-
-    Args:
-        type: 素材类型
-        name: 素材名称
-        role_type: 角色种类（仅角色类型使用）
-        scenes: 适用场景（仅角色类型使用）
-        audio_path: 音频文件路径（仅音频类型使用）
-        duration: 音频时长（仅音频类型使用）
-        opening_video: 开场视频路径（仅角色类型使用）
-        loop_videos: 循环视频列表（JSON格式，仅角色类型使用）
-        ending_video: 结尾视频路径（仅角色类型使用）
-        audio_id: 音频ID（仅角色类型使用）
-        scene_videos: 场景视频列表（JSON格式，仅场景类型使用）
-        is_double_mode: 是否开启双人模式（仅角色类型使用）
-        left_audio_id: 左边说话人参考音频ID（双人模式）
-        right_audio_id: 右边说话人参考音频ID（双人模式）
-
-    Returns:
-        创建结果
+    创建素材（使用 JSON body）
     """
     try:
         global MOCK_ROLES, MOCK_SCENES, MOCK_BGMS, MOCK_AUDIOS
 
+        type = data.get("type")
+        name = data.get("name")
+
+        if not type or not name:
+            raise HTTPException(status_code=400, detail="缺少 type 或 name 参数")
+
         if type == "role":
-            actual_is_double_mode = is_double_mode
-            actual_left_audio_id = left_audio_id
-            actual_right_audio_id = right_audio_id
+            role_type = data.get("role_type")
+            scenes = data.get("scenes", [])
+            opening_video = data.get("opening_video")
+            loop_videos = data.get("loop_videos", [])
+            ending_video = data.get("ending_video")
+            audio_id = data.get("audio_id")
+            is_double_mode = data.get("is_double_mode", False)
+            left_audio_id = data.get("left_audio_id")
+            right_audio_id = data.get("right_audio_id")
+            pip_video_path = data.get("pip_video_path")
+            pip_left_video_path = data.get("pip_left_video_path")
+            pip_right_video_path = data.get("pip_right_video_path")
 
-            if hasattr(is_double_mode, 'default'):
-                actual_is_double_mode = is_double_mode.default
-            if hasattr(left_audio_id, 'default'):
-                actual_left_audio_id = left_audio_id.default
-            if hasattr(right_audio_id, 'default'):
-                actual_right_audio_id = right_audio_id.default
-
-            if actual_is_double_mode:
-                if not actual_left_audio_id or not actual_right_audio_id:
+            if is_double_mode:
+                if not left_audio_id or not right_audio_id:
                     raise HTTPException(status_code=400, detail="双人模式必须选择两个参考音频")
 
-                left_audio_exists = any(a.get("id") == actual_left_audio_id for a in MOCK_AUDIOS)
-                right_audio_exists = any(a.get("id") == actual_right_audio_id for a in MOCK_AUDIOS)
+                left_audio_exists = any(a.get("id") == left_audio_id for a in MOCK_AUDIOS)
+                right_audio_exists = any(a.get("id") == right_audio_id for a in MOCK_AUDIOS)
                 if not left_audio_exists:
-                    raise HTTPException(status_code=400, detail=f"左边参考音频不存在: {actual_left_audio_id}")
+                    raise HTTPException(status_code=400, detail=f"左边参考音频不存在: {left_audio_id}")
                 if not right_audio_exists:
-                    raise HTTPException(status_code=400, detail=f"右边参考音频不存在: {actual_right_audio_id}")
+                    raise HTTPException(status_code=400, detail=f"右边参考音频不存在: {right_audio_id}")
 
-            loop_videos_list = []
-            if loop_videos:
-                try:
-                    loop_videos_list = json.loads(loop_videos)
-                except Exception as e:
-                    logger.warning(f"解析循环视频列表失败: {e}")
+            loop_videos_list = loop_videos if isinstance(loop_videos, list) else []
 
             # 将视频文件复制到 backend/data/roles/ 目录
             role_dir = BASE_DIR / "backend" / "data" / "roles"
@@ -763,6 +734,10 @@ async def create_material(
                 saved_loop_videos.append({**lv, "path": saved_path})
             # 复制结尾视频
             saved_ending_video = copy_video_to_role_dir(ending_video) if ending_video else ""
+            # 复制画外音视频
+            saved_pip_video = copy_video_to_role_dir(pip_video_path) if pip_video_path else ""
+            saved_pip_left_video = copy_video_to_role_dir(pip_left_video_path) if pip_left_video_path else ""
+            saved_pip_right_video = copy_video_to_role_dir(pip_right_video_path) if pip_right_video_path else ""
 
             video_count = 0
             if saved_opening_video:
@@ -784,7 +759,11 @@ async def create_material(
                 "video_count": video_count,
                 "is_double_mode": actual_is_double_mode,
                 "left_audio_id": actual_left_audio_id if actual_is_double_mode else None,
-                "right_audio_id": actual_right_audio_id if actual_is_double_mode else None
+                "right_audio_id": actual_right_audio_id if actual_is_double_mode else None,
+                # 画外音字段
+                "pip_video_path": saved_pip_video,
+                "pip_left_video_path": saved_pip_left_video,
+                "pip_right_video_path": saved_pip_right_video
             }
 
             thumbnail_path = generate_role_thumbnail(
@@ -1012,7 +991,14 @@ async def update_material(
     audio_id: str = Query(None, description="音频ID（仅角色类型使用）"),
     scene_videos: str = Query(None, description="场景视频列表（JSON格式，仅场景类型使用）"),
     duration: float = Query(None, description="音频/BGM时长（仅audio/bgm类型使用）"),
-    path: str = Query(None, description="音频/BGM文件路径（仅audio/bgm类型使用）")
+    path: str = Query(None, description="音频/BGM文件路径（仅audio/bgm类型使用）"),
+    is_double_mode: bool = Query(None, description="是否开启双人模式（仅角色类型使用）"),
+    left_audio_id: str = Query(None, description="左边说话人参考音频ID（双人模式）"),
+    right_audio_id: str = Query(None, description="右边说话人参考音频ID（双人模式）"),
+    # 画外音字段
+    pip_video_path: str = Query(None, description="画外音视频路径（单人模式）"),
+    pip_left_video_path: str = Query(None, description="画外音左边视频路径（双人模式）"),
+    pip_right_video_path: str = Query(None, description="画外音右边视频路径（双人模式）")
 ):
     """
     更新素材
@@ -1056,6 +1042,19 @@ async def update_material(
                             role["loop_videos"] = json.loads(loop_videos)
                         except Exception as e:
                             logger.warning(f"解析循环视频列表失败: {e}")
+                    if is_double_mode is not None:
+                        role["is_double_mode"] = is_double_mode
+                    if left_audio_id is not None:
+                        role["left_audio_id"] = left_audio_id
+                    if right_audio_id is not None:
+                        role["right_audio_id"] = right_audio_id
+                    # 画外音字段更新（复制到角色目录，与创建逻辑一致）
+                    if pip_video_path is not None:
+                        role["pip_video_path"] = copy_video_to_role_dir(pip_video_path) if pip_video_path else ""
+                    if pip_left_video_path is not None:
+                        role["pip_left_video_path"] = copy_video_to_role_dir(pip_left_video_path) if pip_left_video_path else ""
+                    if pip_right_video_path is not None:
+                        role["pip_right_video_path"] = copy_video_to_role_dir(pip_right_video_path) if pip_right_video_path else ""
                     
                     # 重新计算视频总数
                     video_count = 0

@@ -6,12 +6,13 @@
 import logging
 import os
 import random
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 
 from api.utils.async_subprocess import async_run_subprocess, async_run_ffmpeg, async_run_ffprobe
 
 from core.models.task import Task, TaskConfig, SubtitlePosition
+from core.utils.video_utils import calculate_aspect_ratio, calculate_aspect_ratio_error
 from business.audio.audio_mixer import AudioMixer
 from business.postprocess.transition_effects import (
     ALL_TRANSITION_EFFECTS,
@@ -325,9 +326,13 @@ class PostProcessor:
             logger.error(f"获取视频元数据失败: {e}")
             return {}
     
-    async def _normalize_video(self, video_path: str, target_width: int, target_height: int, target_fps: float, output_path: str) -> bool:
+    async def _normalize_video(self, video_path: str, target_width: int, target_height: int, target_fps: float, output_path: str, error_threshold: float = 10.0) -> bool:
         """
-        标准化视频（统一分辨率和帧率）
+        标准化视频（统一分辨率和帧率），根据画面比例智能选择缩放方式
+
+        缩放策略：
+        - 比例误差 <= error_threshold: 拉伸缩放（scale 到目标尺寸）
+        - 比例误差 > error_threshold: 填充缩放（等比缩放 + 模糊背景填充）
 
         Args:
             video_path: 输入视频路径
@@ -335,15 +340,48 @@ class PostProcessor:
             target_height: 目标高度
             target_fps: 目标帧率
             output_path: 输出路径
+            error_threshold: 比例误差阈值（默认10%）
 
         Returns:
             是否成功
         """
         try:
+            # 获取输入视频的实际尺寸
+            meta = await self._get_video_metadata(video_path)
+            if not meta:
+                logger.warning(f"无法获取视频信息，使用默认拉伸缩放: {video_path}")
+                scale_filter = f"scale={target_width}:{target_height},fps={target_fps}"
+            else:
+                src_width = meta.get('width', 0)
+                src_height = meta.get('height', 0)
+                target_ratio = calculate_aspect_ratio(target_width, target_height)
+                src_ratio = calculate_aspect_ratio(src_width, src_height)
+                ratio_error = calculate_aspect_ratio_error(src_ratio, target_ratio)
+
+                if src_width == target_width and src_height == target_height:
+                    # 尺寸完全一致，只需统一帧率
+                    scale_filter = f"fps={target_fps}"
+                    logger.info(f"视频尺寸已一致 {src_width}x{src_height}，仅统一帧率")
+                elif ratio_error <= error_threshold:
+                    # 比例误差小，拉伸缩放
+                    scale_filter = f"scale={target_width}:{target_height},fps={target_fps}"
+                    logger.info(f"视频 {src_width}x{src_height} 比例误差 {ratio_error:.2f}% <= {error_threshold}%，拉伸缩放到 {target_width}x{target_height}")
+                else:
+                    # 比例误差大，填充缩放：等比缩放 + 模糊背景填充
+                    scale_filter = (
+                        f"split[original][bg];"
+                        f"[bg]scale={target_width}:{target_height}:force_original_aspect_ratio=increase,"
+                        f"boxblur=50:5,format=yuv420p[blurred_bg];"
+                        f"[original]scale={target_width}:{target_height}:force_original_aspect_ratio=decrease,"
+                        f"format=yuv420p[fg];"
+                        f"[blurred_bg][fg]overlay=(W-w)/2:(H-h)/2,fps={target_fps}"
+                    )
+                    logger.info(f"视频 {src_width}x{src_height} 比例误差 {ratio_error:.2f}% > {error_threshold}%，填充缩放到 {target_width}x{target_height}")
+
             cmd = [
                 'ffmpeg',
                 '-i', video_path,
-                '-vf', f'scale={target_width}:{target_height},fps={target_fps}',
+                '-vf', scale_filter,
                 '-c:v', 'libx264',
                 '-crf', '18',
                 '-preset', 'medium',
@@ -358,10 +396,10 @@ class PostProcessor:
             if returncode != 0:
                 logger.error(f"视频标准化失败: {stderr.decode() if stderr else ''}")
                 return False
-            
+
             logger.info(f"视频标准化成功: {output_path}")
             return True
-            
+
         except Exception as e:
             logger.error(f"视频标准化异常: {e}")
             return False

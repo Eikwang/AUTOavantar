@@ -394,6 +394,86 @@
               </el-select>
               <p class="form-hint">双人模式需要选择两个不同的参考音频</p>
             </div>
+
+            <!-- 画外音视频上传 - 单人模式 -->
+            <div v-if="!createForm.is_double_mode" class="video-section">
+              <div class="section-header">
+                <h5>画外音视频</h5>
+                <el-button size="small" type="primary" plain @click="triggerUpload('pip')">
+                  <el-icon><Upload /></el-icon> 上传
+                </el-button>
+                <input type="file" ref="pipVideoInput" accept="video/*" style="display:none" @change="handleVideoUpload($event, 'pip')" />
+              </div>
+              <div class="video-preview" v-if="createForm.pip_video_path">
+                <div class="video-preview-with-actions">
+                  <video :src="getFileUrl(createForm.pip_video_path)" controls style="object-fit:contain" />
+                </div>
+                <div class="video-actions-row">
+                  <el-button size="small" type="danger" @click="removeVideo('pip')">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </div>
+              </div>
+              <div v-else class="upload-placeholder" @click="triggerUpload('pip')">
+                <el-icon><VideoCamera /></el-icon>
+                <span>点击上传画外音视频</span>
+              </div>
+            </div>
+
+            <!-- 画外音视频上传 - 双人模式 -->
+            <div v-else class="video-section double-pip-section">
+              <div class="section-header">
+                <h5>画外音视频</h5>
+              </div>
+              <div class="double-pip-grid">
+                <div class="pip-column">
+                  <div class="section-header">
+                    <h6>左边说话人画外音</h6>
+                    <el-button size="small" type="primary" plain @click="triggerUpload('pip_left')">
+                      <el-icon><Upload /></el-icon> 上传
+                    </el-button>
+                    <input type="file" ref="pipLeftVideoInput" accept="video/*" style="display:none" @change="handleVideoUpload($event, 'pip_left')" />
+                  </div>
+                  <div class="video-preview" v-if="createForm.pip_left_video_path">
+                    <div class="video-preview-with-actions">
+                      <video :src="getFileUrl(createForm.pip_left_video_path)" controls style="object-fit:contain" />
+                    </div>
+                    <div class="video-actions-row">
+                      <el-button size="small" type="danger" @click="removeVideo('pip_left')">
+                        <el-icon><Delete /></el-icon>
+                      </el-button>
+                    </div>
+                  </div>
+                  <div v-else class="upload-placeholder" @click="triggerUpload('pip_left')">
+                    <el-icon><VideoCamera /></el-icon>
+                    <span>点击上传</span>
+                  </div>
+                </div>
+                <div class="pip-column">
+                  <div class="section-header">
+                    <h6>右边说话人画外音</h6>
+                    <el-button size="small" type="primary" plain @click="triggerUpload('pip_right')">
+                      <el-icon><Upload /></el-icon> 上传
+                    </el-button>
+                    <input type="file" ref="pipRightVideoInput" accept="video/*" style="display:none" @change="handleVideoUpload($event, 'pip_right')" />
+                  </div>
+                  <div class="video-preview" v-if="createForm.pip_right_video_path">
+                    <div class="video-preview-with-actions">
+                      <video :src="getFileUrl(createForm.pip_right_video_path)" controls style="object-fit:contain" />
+                    </div>
+                    <div class="video-actions-row">
+                      <el-button size="small" type="danger" @click="removeVideo('pip_right')">
+                        <el-icon><Delete /></el-icon>
+                      </el-button>
+                    </div>
+                  </div>
+                  <div v-else class="upload-placeholder" @click="triggerUpload('pip_right')">
+                    <el-icon><VideoCamera /></el-icon>
+                    <span>点击上传</span>
+                  </div>
+                </div>
+              </div>
+            </div>
           </template>
 
           <template v-else-if="currentTab === 'scene'">
@@ -918,6 +998,9 @@ const endingInput = ref(null)
 const sceneInput = ref(null)
 const audioInput = ref(null)
 const bgmInput = ref(null)
+const pipVideoInput = ref(null)
+const pipLeftVideoInput = ref(null)
+const pipRightVideoInput = ref(null)
 const bgmTimestamp = ref(null)
 
 const roles = ref([])
@@ -941,7 +1024,10 @@ const createForm = reactive({
   bgm_duration: 0,
   is_double_mode: false,
   left_audio_id: '',
-  right_audio_id: ''
+  right_audio_id: '',
+  pip_video_path: '',
+  pip_left_video_path: '',
+  pip_right_video_path: ''
 })
 
 const createRules = computed(() => ({
@@ -1044,7 +1130,10 @@ const triggerUpload = (type) => {
     opening: openingInput,
     loop: loopInput,
     ending: endingInput,
-    scene: sceneInput
+    scene: sceneInput,
+    pip: pipVideoInput,
+    pip_left: pipLeftVideoInput,
+    pip_right: pipRightVideoInput
   }
   inputs[type]?.value?.click()
 }
@@ -1089,6 +1178,12 @@ const handleVideoUpload = async (event, type) => {
           createForm.scene_videos.push({ path, tag: '' })
           ElMessage.success('视频重新封装完成')
         }, 1000)
+      } else if (type === 'pip') {
+        createForm.pip_video_path = path
+      } else if (type === 'pip_left') {
+        createForm.pip_left_video_path = path
+      } else if (type === 'pip_right') {
+        createForm.pip_right_video_path = path
       }
     }
   } catch (error) {
@@ -1259,6 +1354,9 @@ const handleBgmUpload = async (event) => {
 const removeVideo = (type) => {
   if (type === 'opening') createForm.opening_video = ''
   else if (type === 'ending') createForm.ending_video = ''
+  else if (type === 'pip') createForm.pip_video_path = ''
+  else if (type === 'pip_left') createForm.pip_left_video_path = ''
+  else if (type === 'pip_right') createForm.pip_right_video_path = ''
 }
 
 const removeLoopVideo = (index) => {
@@ -1645,6 +1743,9 @@ const editItem = (item) => {
     createForm.is_double_mode = item.is_double_mode || false
     createForm.left_audio_id = item.left_audio_id || ''
     createForm.right_audio_id = item.right_audio_id || ''
+    createForm.pip_video_path = item.pip_video_path || ''
+    createForm.pip_left_video_path = item.pip_left_video_path || ''
+    createForm.pip_right_video_path = item.pip_right_video_path || ''
   } else if (currentTab.value === 'scene') {
     createForm.scene_videos = item.scene_videos || []
   } else if (currentTab.value === 'audio') {
@@ -1752,7 +1853,13 @@ const resetForm = () => {
     scene_videos: [],
     audio_clips: [],
     bgm_path: '',
-    bgm_name: ''
+    bgm_name: '',
+    is_double_mode: false,
+    left_audio_id: '',
+    right_audio_id: '',
+    pip_video_path: '',
+    pip_left_video_path: '',
+    pip_right_video_path: ''
   })
   bgmTimestamp.value = null
 }
@@ -1774,9 +1881,12 @@ const cleanAudioClips = (clips) => {
 const handleDoubleModeChange = (value) => {
   if (value) {
     createForm.audio_id = ''
+    createForm.pip_video_path = ''
   } else {
     createForm.left_audio_id = ''
     createForm.right_audio_id = ''
+    createForm.pip_left_video_path = ''
+    createForm.pip_right_video_path = ''
   }
 }
 
@@ -2063,6 +2173,10 @@ const submitForm = async () => {
       if (createForm.is_double_mode) {
         formData.left_audio_id = createForm.left_audio_id
         formData.right_audio_id = createForm.right_audio_id
+        formData.pip_left_video_path = createForm.pip_left_video_path
+        formData.pip_right_video_path = createForm.pip_right_video_path
+      } else {
+        formData.pip_video_path = createForm.pip_video_path
       }
     } else if (currentTab.value === 'scene') {
       formData.scene_videos = createForm.scene_videos || []
@@ -2663,6 +2777,24 @@ onUnmounted(() => {
   font-weight: 600;
   color: var(--color-text-primary);
   transition: color 0.3s;
+}
+
+.section-header h6 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  transition: color 0.3s;
+}
+
+.double-pip-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.pip-column {
+  min-width: 0;
 }
 
 /* 暗色主题下的对话框样式 - 使用 :deep 确保穿透到对话框内部 */
