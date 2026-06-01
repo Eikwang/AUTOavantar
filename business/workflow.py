@@ -403,6 +403,19 @@ class DigitalHumanWorkflow:
                 logger.info(f"跳过初始化阶段，从 {skip_to_stage} 继续")
                 # 即使跳过初始化，也需要标准化路径
                 self._normalize_task_paths(task)
+
+                # 检查是否需要面部超分（即使跳过初始化，也需要检测）
+                # 只有当视频生成阶段还没开始时，才检测分辨率
+                from business.video.face_enhancer import get_video_resolution, calculate_strength_by_resolution
+                if not hasattr(task, '_face_enhance_enabled') or task._face_enhance_enabled is None:
+                    opening_path = self._normalize_video_path(task.opening_video) if task.opening_video else None
+                    if opening_path and os.path.exists(opening_path):
+                        width, height = get_video_resolution(opening_path)
+                        strength, should_enhance = calculate_strength_by_resolution(width, height)
+                        task._face_enhance_enabled = should_enhance
+                        task._face_enhance_strength = strength
+                        if should_enhance:
+                            logger.info(f"面部超分已启用(检查点恢复): 分辨率 {width}x{height}, strength={strength}")
             else:
                 logger.info("步骤 1/5: 初始化任务配置")
                 # 标准化所有文件路径
@@ -424,6 +437,23 @@ class DigitalHumanWorkflow:
                     task.loop_videos = [source_video_path]
                 if not task.scene_videos:
                     task.scene_videos = [source_video_path]
+
+                # 检测开场视频分辨率，判断是否需要面部超分
+                from business.video.face_enhancer import get_video_resolution, calculate_strength_by_resolution
+                opening_path = self._normalize_video_path(task.opening_video)
+                if os.path.exists(opening_path):
+                    width, height = get_video_resolution(opening_path)
+                    strength, should_enhance = calculate_strength_by_resolution(width, height)
+                    task._face_enhance_enabled = should_enhance
+                    task._face_enhance_strength = strength
+                    if should_enhance:
+                        logger.info(f"面部超分已启用: 分辨率 {width}x{height}, max_pixels={max(width, height)}, strength={strength}")
+                    else:
+                        logger.info(f"面部超分未启用: 分辨率 {width}x{height}, max_pixels={max(width, height)} <= 1920")
+                else:
+                    logger.warning(f"开场视频不存在，跳过面部超分检测: {opening_path}")
+                    task._face_enhance_enabled = False
+                    task._face_enhance_strength = 0.0
 
                 # 保存检查点
                 self.save_task_checkpoint(task, config)
@@ -768,12 +798,190 @@ class DigitalHumanWorkflow:
                 # 保存检查点（视频路径）
                 self.save_task_checkpoint(task, config)
 
+            # 步骤 4.5: 面部超分（可选）
+            face_enhance_done = False
+            if getattr(task, '_face_enhance_enabled', False):
+                logger.info("步骤 4.5/5: 面部超分")
+                if progress_callback:
+                    progress_callback(85, "面部优化中...")
+
+                try:
+                    from business.video.face_enhancer import (
+                        copy_audio_to_video,
+                        enhance_video
+                    )
+                    import shutil
+
+                    strength = getattr(task, '_face_enhance_strength', 0.3)
+
+                    # 获取 tag_matcher 用于判断场景标签
+                    from business.video.tag_matcher import get_tag_matcher
+                    tag_matcher = get_tag_matcher()
+
+                    if config.enable_double_mode:
+                        # 双人模式：处理 final_video_path
+                        if hasattr(task, 'final_video_path') and task.final_video_path and os.path.exists(task.final_video_path):
+                            # 检查是否需要超分（非场景标签视频）
+                            should_enhance = False
+                            if hasattr(task, 'completed_tone_videos') and task.completed_tone_videos:
+                                # 检查是否有非场景标签的视频
+                                for tone, video_path in task.completed_tone_videos.items():
+                                    if video_path and os.path.exists(video_path):
+                                        is_scene = tag_matcher.is_scene_tag(tone)
+                                        logger.info(f"标签 '{tone}' 是场景标签: {is_scene}")
+                                        if not is_scene:
+                                            should_enhance = True
+                                            break
+
+                            if should_enhance:
+                                # 使用临时文件名，确保原子替换
+                                original_video_path = task.final_video_path
+                                temp_enhanced_path = original_video_path.replace('.mp4', '_temp_enhanced.mp4')
+                                final_enhanced_path = original_video_path.replace('.mp4', '_enhanced.mp4')
+
+                                # 进度回调
+                                def face_progress_callback(current, total):
+                                    if progress_callback:
+                                        progress_callback(85 + (current / total * 3), f"面部优化中... {current}/{total}")
+
+                                # 执行超分
+                                logger.info(f"双人模式面部超分: {original_video_path} -> {temp_enhanced_path}, strength={strength}")
+                                success = enhance_video(
+                                    original_video_path,
+                                    temp_enhanced_path,
+                                    strength=strength,
+                                    progress_callback=face_progress_callback
+                                )
+
+                                if success and os.path.exists(temp_enhanced_path):
+                                    # 复制音频流（双人模式视频已包含合并后的音频）
+                                    audio_success = copy_audio_to_video(original_video_path, temp_enhanced_path)
+                                    if not audio_success:
+                                        logger.error("双人模式音频复制失败，中止超分步骤")
+                                        # 删除临时文件
+                                        if os.path.exists(temp_enhanced_path):
+                                            os.remove(temp_enhanced_path)
+                                        raise Exception("音频复制失败")
+
+                                    # 原子替换：先移动到最终路径，再删除原视频
+                                    if os.path.exists(final_enhanced_path):
+                                        os.remove(final_enhanced_path)
+                                    shutil.move(temp_enhanced_path, final_enhanced_path)
+                                    if os.path.exists(original_video_path):
+                                        os.remove(original_video_path)
+                                    task.final_video_path = final_enhanced_path
+                                    logger.info(f"双人模式面部超分完成: {final_enhanced_path}")
+                                else:
+                                    logger.warning("双人模式面部超分失败，跳过该步骤")
+                                    if os.path.exists(temp_enhanced_path):
+                                        os.remove(temp_enhanced_path)
+
+                        # 处理 completed_tone_videos 中的单独标签视频
+                        if hasattr(task, 'completed_tone_videos'):
+                            for tone, video_path in list(task.completed_tone_videos.items()):
+                                if video_path and os.path.exists(video_path):
+                                    # 检查是否为场景标签（场景标签视频不需要超分）
+                                    if tag_matcher.is_scene_tag(tone):
+                                        logger.info(f"标签 '{tone}' 是场景标签，跳过超分")
+                                        continue
+
+                                    # 使用临时文件名
+                                    temp_enhanced_path = video_path.replace('.mp4', '_temp_enhanced.mp4')
+                                    final_enhanced_path = video_path.replace('.mp4', '_enhanced.mp4')
+
+                                    def tone_face_progress_callback(current, total):
+                                        if progress_callback:
+                                            progress_callback(85 + (current / total * 3), f"面部优化中 ({tone})...")
+
+                                    logger.info(f"标签 '{tone}' 面部超分: {video_path} -> {temp_enhanced_path}")
+                                    success = enhance_video(
+                                        video_path,
+                                        temp_enhanced_path,
+                                        strength=strength,
+                                        progress_callback=tone_face_progress_callback
+                                    )
+
+                                    if success and os.path.exists(temp_enhanced_path):
+                                        # 复制音频流
+                                        audio_success = copy_audio_to_video(video_path, temp_enhanced_path)
+                                        if not audio_success:
+                                            logger.error(f"标签 '{tone}' 音频复制失败，跳过超分")
+                                            if os.path.exists(temp_enhanced_path):
+                                                os.remove(temp_enhanced_path)
+                                            continue
+
+                                        # 原子替换
+                                        if os.path.exists(final_enhanced_path):
+                                            os.remove(final_enhanced_path)
+                                        shutil.move(temp_enhanced_path, final_enhanced_path)
+                                        if os.path.exists(video_path):
+                                            os.remove(video_path)
+                                        task.completed_tone_videos[tone] = final_enhanced_path
+                                        logger.info(f"标签 '{tone}' 面部超分完成: {final_enhanced_path}")
+
+                    else:
+                        # 单人模式：处理所有片段的视频
+                        for segment in task.segments:
+                            if segment.output_path and os.path.exists(segment.output_path):
+                                # 使用临时文件名
+                                original_path = segment.output_path
+                                temp_enhanced_path = original_path.replace('.mp4', '_temp_enhanced.mp4')
+                                final_enhanced_path = original_path.replace('.mp4', '_enhanced.mp4')
+
+                                def segment_face_progress_callback(current, total):
+                                    if progress_callback:
+                                        progress_callback(85 + (current / total * 3), f"面部优化中... {current}/{total}")
+
+                                logger.info(f"段落 {segment.segment_id} 面部超分: {original_path}")
+                                success = enhance_video(
+                                    original_path,
+                                    temp_enhanced_path,
+                                    strength=strength,
+                                    progress_callback=segment_face_progress_callback
+                                )
+
+                                if success and os.path.exists(temp_enhanced_path):
+                                    # 复制音频流
+                                    audio_success = copy_audio_to_video(original_path, temp_enhanced_path)
+                                    if not audio_success:
+                                        logger.error(f"段落 {segment.segment_id} 音频复制失败，跳过超分")
+                                        if os.path.exists(temp_enhanced_path):
+                                            os.remove(temp_enhanced_path)
+                                        continue
+
+                                    # 原子替换
+                                    if os.path.exists(final_enhanced_path):
+                                        os.remove(final_enhanced_path)
+                                    shutil.move(temp_enhanced_path, final_enhanced_path)
+                                    if os.path.exists(original_path):
+                                        os.remove(original_path)
+                                    segment.output_path = final_enhanced_path
+                                    logger.info(f"段落 {segment.segment_id} 面部超分完成: {final_enhanced_path}")
+                                    logger.info(f"段落 {segment.segment_id} 面部超分完成")
+
+                    face_enhance_done = True
+                    logger.info("面部超分步骤完成")
+
+                except Exception as e:
+                    logger.error(f"面部超分失败，跳过该步骤: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    face_enhance_done = False
+
+                # 无论成功失败，都更新进度
+                if progress_callback:
+                    if face_enhance_done:
+                        progress_callback(86, "面部优化完成")
+                    else:
+                        progress_callback(86, "面部优化跳过")
+
             # 步骤 5: 后期处理（视频合并是必须的，字幕等是可选的）
+            # 进度范围：86-100%
             logger.info("步骤 5/5: 后期处理")
             task.status = TaskStatus.POST_PROCESSING
-            task.progress = 85
+            task.progress = 86
             if progress_callback:
-                progress_callback(85, "后期处理中...")
+                progress_callback(86, "后期处理中...")
 
             # 后期处理子阶段进度更新
             def post_progress_callback(progress: float, stage: str):
