@@ -59,7 +59,7 @@ data/
 .trae/
 temp/
 tmp/
-py310/
+runtime/
 tf_download/
 *.mp4
 *.wav
@@ -116,3 +116,4 @@ release-update*/
 dist/
 4.打包环境和模型.bat
 .understand-anything/
+py310/

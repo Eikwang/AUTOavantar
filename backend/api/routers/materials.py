@@ -5,7 +5,7 @@
 
 from typing import List, Optional
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, Query, Body, UploadFile, File
+from fastapi import APIRouter, HTTPException, Body, Query, UploadFile, File
 import logging
 import os
 import sys
@@ -37,6 +37,21 @@ except Exception as e:
     AUDIO_MERGER = None
 
 router = APIRouter()
+
+
+def _copy_video_to_role_dir(video_path_str: str, role_dir: Path) -> str:
+    """将视频文件复制到 backend/data/roles/ 目录，返回相对路径"""
+    if not video_path_str:
+        return ""
+    resolved = resolve_video_path(video_path_str)
+    if not resolved or not resolved.exists():
+        logger.warning(f"角色视频源文件不存在: {video_path_str}")
+        return video_path_str
+    dest_filename = f"role_{uuid.uuid4().hex[:8]}{resolved.suffix}"
+    dest_path = role_dir / dest_filename
+    shutil.copy2(str(resolved), str(dest_path))
+    logger.info(f"角色视频已复制到: {dest_path}")
+    return f"backend/data/roles/{dest_filename}"
 
 
 def extract_video_frame(video_path: Optional[str], frame_index: int = 0) -> Optional[str]:
@@ -711,33 +726,19 @@ async def create_material(data: dict = Body(...)):
             role_dir = BASE_DIR / "backend" / "data" / "roles"
             role_dir.mkdir(parents=True, exist_ok=True)
 
-            def copy_video_to_role_dir(video_path_str: str) -> str:
-                """将视频文件复制到 backend/data/roles/ 目录，返回相对路径"""
-                if not video_path_str:
-                    return ""
-                resolved = resolve_video_path(video_path_str)
-                if not resolved or not resolved.exists():
-                    logger.warning(f"角色视频源文件不存在: {video_path_str}")
-                    return video_path_str
-                dest_filename = f"role_{uuid.uuid4().hex[:8]}{resolved.suffix}"
-                dest_path = role_dir / dest_filename
-                shutil.copy2(str(resolved), str(dest_path))
-                logger.info(f"角色视频已复制到: {dest_path}")
-                return f"backend/data/roles/{dest_filename}"
-
             # 复制开场视频
-            saved_opening_video = copy_video_to_role_dir(opening_video) if opening_video else ""
+            saved_opening_video = _copy_video_to_role_dir(opening_video, role_dir) if opening_video else ""
             # 复制循环视频
             saved_loop_videos = []
             for lv in loop_videos_list:
-                saved_path = copy_video_to_role_dir(lv.get("path", ""))
+                saved_path = _copy_video_to_role_dir(lv.get("path", ""), role_dir)
                 saved_loop_videos.append({**lv, "path": saved_path})
             # 复制结尾视频
-            saved_ending_video = copy_video_to_role_dir(ending_video) if ending_video else ""
+            saved_ending_video = _copy_video_to_role_dir(ending_video, role_dir) if ending_video else ""
             # 复制画外音视频
-            saved_pip_video = copy_video_to_role_dir(pip_video_path) if pip_video_path else ""
-            saved_pip_left_video = copy_video_to_role_dir(pip_left_video_path) if pip_left_video_path else ""
-            saved_pip_right_video = copy_video_to_role_dir(pip_right_video_path) if pip_right_video_path else ""
+            saved_pip_video = _copy_video_to_role_dir(pip_video_path, role_dir) if pip_video_path else ""
+            saved_pip_left_video = _copy_video_to_role_dir(pip_left_video_path, role_dir) if pip_left_video_path else ""
+            saved_pip_right_video = _copy_video_to_role_dir(pip_right_video_path, role_dir) if pip_right_video_path else ""
 
             video_count = 0
             if saved_opening_video:
@@ -757,9 +758,9 @@ async def create_material(data: dict = Body(...)):
                 "audio_id": audio_id or "",
                 "description": "",
                 "video_count": video_count,
-                "is_double_mode": actual_is_double_mode,
-                "left_audio_id": actual_left_audio_id if actual_is_double_mode else None,
-                "right_audio_id": actual_right_audio_id if actual_is_double_mode else None,
+                "is_double_mode": is_double_mode,
+                "left_audio_id": left_audio_id if is_double_mode else None,
+                "right_audio_id": right_audio_id if is_double_mode else None,
                 # 画外音字段
                 "pip_video_path": saved_pip_video,
                 "pip_left_video_path": saved_pip_left_video,
@@ -776,17 +777,12 @@ async def create_material(data: dict = Body(...)):
 
             MOCK_ROLES.append(new_role)
             save_mock_roles()
-            logger.info(f"创建角色素材: {new_role['role_id']}, 双人模式: {actual_is_double_mode}")
+            logger.info(f"创建角色素材: {new_role['role_id']}, 双人模式: {is_double_mode}")
             return DeleteResponse(code=200, message="素材创建成功")
 
         elif type == "scene":
-            # 解析场景视频列表
-            scene_videos_list = []
-            if scene_videos:
-                try:
-                    scene_videos_list = json.loads(scene_videos)
-                except Exception as e:
-                    logger.warning(f"解析场景视频列表失败: {e}")
+            scene_videos = data.get("scene_videos", [])
+            scene_videos_list = scene_videos if isinstance(scene_videos, list) else []
 
             # 将视频文件复制到 backend/data/scenes/ 目录
             scene_dir = BASE_DIR / "backend" / "data" / "scenes"
@@ -830,7 +826,9 @@ async def create_material(data: dict = Body(...)):
             return DeleteResponse(code=200, message="素材创建成功")
 
         elif type == "bgm":
-            # 使用bgm_path参数
+            bgm_path = data.get("bgm_path")
+            audio_path = data.get("audio_path")
+            duration = data.get("duration", 0)
             final_bgm_path = bgm_path or audio_path
 
             if not final_bgm_path:
@@ -877,86 +875,59 @@ async def create_material(data: dict = Body(...)):
             return DeleteResponse(code=200, message="素材创建成功")
 
         elif type == "audio":
+            audio_clips = data.get("audio_clips", [])
+            audio_path = data.get("audio_path")
+            duration = data.get("duration", 0)
             merged_audio_path = ""
             merged_duration = 0.0
-            
-            # 处理 audio_clips 参数
-            if audio_clips:
-                try:
-                    clips = json.loads(audio_clips)
-                    
-                    if clips and isinstance(clips, list) and len(clips) > 0:
-                        if AUDIO_MERGER:
-                            # 修复文件路径：将相对路径转换为绝对路径
-                            # 实际文件存储在 backend/uploads/ 目录下
-                            fixed_clips = []
-                            for clip in clips:
-                                clip_path = clip.get('path', '')
-                                
-                                # 转换为 Path 对象
-                                audio_path_obj = Path(clip_path)
-                                
-                                # 检查文件是否存在
-                                if not audio_path_obj.exists():
-                                    # 尝试添加 uploads/ 前缀
-                                    if not str(audio_path_obj).startswith('uploads'):
-                                        fixed_path = Path('uploads') / audio_path_obj
-                                        if fixed_path.exists():
-                                            clip_path = str(fixed_path)
-                                            logger.info(f"路径修正: {clip['path']} -> {clip_path}")
-                                    # 尝试使用绝对路径
-                                    elif not Path.is_absolute(audio_path_obj):
-                                        backend_root = Path(__file__).resolve().parent.parent
-                                        abs_path = backend_root / clip_path
-                                        if abs_path.exists():
-                                            clip_path = str(abs_path)
-                                            logger.info(f"使用绝对路径: {clip_path}")
-                                
-                                fixed_clips.append({
-                                    **clip,
-                                    'path': clip_path
-                                })
-                            
-                            # 使用音频合并器合并多个音频片段
-                            logger.info(f"开始合并 {len(fixed_clips)} 个音频片段")
-                            
-                            success, merged_path, merged_dur, error_msg = AUDIO_MERGER.merge_audio_clips(
-                                fixed_clips,
-                                output_filename=f"audio_{name}_{uuid.uuid4().hex[:8]}.wav"
-                            )
-                            
-                            if success:
-                                merged_audio_path = merged_path
-                                merged_duration = merged_dur
-                                logger.info(f"音频合并成功: {merged_path}, 时长: {merged_dur:.2f}秒")
-                            else:
-                                logger.error(f"音频合并失败: {error_msg}")
-                                # 如果合并失败，至少使用第一个片段
-                                if fixed_clips[0].get('path'):
-                                    merged_audio_path = fixed_clips[0]['path']
-                                    merged_duration = fixed_clips[0].get('duration', 0.0)
-                        else:
-                            # 如果没有音频合并器，使用第一个片段
-                            if clips[0].get('path'):
-                                merged_audio_path = clips[0]['path']
-                                merged_duration = clips[0].get('duration', 0.0)
+
+            # 处理 audio_clips 参数 - 现在是原生列表而非 JSON 字符串
+            clips = audio_clips if isinstance(audio_clips, list) else []
+            if clips and len(clips) > 0:
+                if AUDIO_MERGER:
+                    fixed_clips = []
+                    for clip in clips:
+                        clip_path = clip.get('path', '')
+                        audio_path_obj = Path(clip_path)
+                        if not audio_path_obj.exists():
+                            if not str(audio_path_obj).startswith('uploads'):
+                                fixed_path = Path('uploads') / audio_path_obj
+                                if fixed_path.exists():
+                                    clip_path = str(fixed_path)
+                                    logger.info(f"路径修正: {clip.get('path', '')} -> {clip_path}")
+                            elif not Path.is_absolute(audio_path_obj):
+                                backend_root = Path(__file__).resolve().parent.parent
+                                abs_path = backend_root / clip_path
+                                if abs_path.exists():
+                                    clip_path = str(abs_path)
+                                    logger.info(f"使用绝对路径: {clip_path}")
+                        fixed_clips.append({**clip, 'path': clip_path})
+
+                    logger.info(f"开始合并 {len(fixed_clips)} 个音频片段")
+                    success, merged_path, merged_dur, error_msg = AUDIO_MERGER.merge_audio_clips(
+                        fixed_clips,
+                        output_filename=f"audio_{name}_{uuid.uuid4().hex[:8]}.wav"
+                    )
+                    if success:
+                        merged_audio_path = merged_path
+                        merged_duration = merged_dur
+                        logger.info(f"音频合并成功: {merged_path}, 时长: {merged_dur:.2f}秒")
                     else:
-                        logger.warning("音频片段列表为空或格式不正确")
-                        
-                except json.JSONDecodeError as e:
-                    logger.error(f"音频剪辑列表解析失败: {audio_clips}, 错误: {e}")
-                    raise HTTPException(status_code=400, detail=f"音频剪辑列表格式错误: {e}")
-                except Exception as e:
-                    logger.error(f"处理音频剪辑时发生错误: {e}")
-                    raise HTTPException(status_code=500, detail=f"音频处理失败: {e}")
+                        logger.error(f"音频合并失败: {error_msg}")
+                        if fixed_clips[0].get('path'):
+                            merged_audio_path = fixed_clips[0]['path']
+                            merged_duration = fixed_clips[0].get('duration', 0.0)
+                else:
+                    if clips[0].get('path'):
+                        merged_audio_path = clips[0]['path']
+                        merged_duration = clips[0].get('duration', 0.0)
             else:
-                logger.warning("未提供音频剪辑参数")
+                logger.warning("音频片段列表为空")
                 raise HTTPException(status_code=400, detail="未提供音频文件")
-            
-            # 使用合并后的音频路径和时长，如果没有合并则使用传入的参数
+
             final_path = merged_audio_path or audio_path or ""
             final_duration = merged_duration if merged_duration > 0 else duration
-            
+
             new_audio = {
                 "id": f"a{len(MOCK_AUDIOS) + 1:03d}",
                 "name": name,
@@ -965,9 +936,9 @@ async def create_material(data: dict = Body(...)):
                 "description": ""
             }
             MOCK_AUDIOS.append(new_audio)
-            save_mock_audios()  # 保存到文件
+            save_mock_audios()
             logger.info(f"创建参考音频素材: {new_audio['id']}, 名称: {name}, 路径: {final_path}, 时长: {final_duration:.2f}秒")
-            return DeleteResponse(code=200, message=f"素材创建成功（已合并{len(json.loads(audio_clips) if audio_clips else '[]')}个音频片段）")
+            return DeleteResponse(code=200, message=f"素材创建成功（已合并{len(clips)}个音频片段）")
         else:
             raise HTTPException(status_code=400, detail=f"不支持的素材类型: {type}")
 
@@ -981,48 +952,49 @@ async def create_material(data: dict = Body(...)):
 @router.put("/materials/{material_id}", response_model=DeleteResponse)
 async def update_material(
     material_id: str,
-    type: str = Query(..., description="素材类型: role/scene/bgm/audio"),
-    name: str = Query(None, description="素材名称（可选，audio/bgm类型可不传）"),
-    role_type: str = Query(None, description="角色种类"),
-    scenes: List[str] = Query(None, description="适用场景"),
-    opening_video: str = Query(None, description="开场视频路径（仅角色类型使用）"),
-    loop_videos: str = Query(None, description="循环视频列表（JSON格式，仅角色类型使用）"),
-    ending_video: str = Query(None, description="结尾视频路径（仅角色类型使用）"),
-    audio_id: str = Query(None, description="音频ID（仅角色类型使用）"),
-    scene_videos: str = Query(None, description="场景视频列表（JSON格式，仅场景类型使用）"),
-    duration: float = Query(None, description="音频/BGM时长（仅audio/bgm类型使用）"),
-    path: str = Query(None, description="音频/BGM文件路径（仅audio/bgm类型使用）"),
-    is_double_mode: bool = Query(None, description="是否开启双人模式（仅角色类型使用）"),
-    left_audio_id: str = Query(None, description="左边说话人参考音频ID（双人模式）"),
-    right_audio_id: str = Query(None, description="右边说话人参考音频ID（双人模式）"),
-    # 画外音字段
-    pip_video_path: str = Query(None, description="画外音视频路径（单人模式）"),
-    pip_left_video_path: str = Query(None, description="画外音左边视频路径（双人模式）"),
-    pip_right_video_path: str = Query(None, description="画外音右边视频路径（双人模式）")
+    data: dict = Body(...)
 ):
     """
-    更新素材
-    
-    Args:
-        material_id: 素材ID
-        type: 素材类型
-        name: 素材名称
-        role_type: 角色种类（仅角色类型使用）
-        scenes: 适用场景（仅角色类型使用）
-        opening_video: 开场视频路径（仅角色类型使用）
-        loop_videos: 循环视频列表（JSON格式，仅角色类型使用）
-        ending_video: 结尾视频路径（仅角色类型使用）
-        audio_id: 音频ID（仅角色类型使用）
-        scene_videos: 场景视频列表（JSON格式，仅场景类型使用）
-        
-    Returns:
-        更新结果
+    更新素材（使用 JSON body）
     """
     try:
-        # 更新模拟数据（后续替换为数据库操作）
         global MOCK_ROLES, MOCK_SCENES, MOCK_BGMS, MOCK_AUDIOS
-        
+
+        type = data.get("type")
+        name = data.get("name")
+
+        if not type:
+            raise HTTPException(status_code=400, detail="缺少 type 参数")
+
         if type == "role":
+            role_type = data.get("role_type")
+            scenes = data.get("scenes")
+            opening_video = data.get("opening_video")
+            loop_videos = data.get("loop_videos")
+            ending_video = data.get("ending_video")
+            audio_id = data.get("audio_id")
+            is_double_mode = data.get("is_double_mode")
+            left_audio_id = data.get("left_audio_id")
+            right_audio_id = data.get("right_audio_id")
+            pip_video_path = data.get("pip_video_path")
+            pip_left_video_path = data.get("pip_left_video_path")
+            pip_right_video_path = data.get("pip_right_video_path")
+
+            role_dir = BASE_DIR / "backend" / "data" / "roles"
+            role_dir.mkdir(parents=True, exist_ok=True)
+
+            def copy_video_to_role_dir(video_path_str: str) -> str:
+                if not video_path_str:
+                    return ""
+                resolved = resolve_video_path(video_path_str)
+                if not resolved or not resolved.exists():
+                    logger.warning(f"角色视频源文件不存在: {video_path_str}")
+                    return video_path_str
+                dest_filename = f"role_{uuid.uuid4().hex[:8]}{resolved.suffix}"
+                dest_path = role_dir / dest_filename
+                shutil.copy2(str(resolved), str(dest_path))
+                return f"backend/data/roles/{dest_filename}"
+
             for role in MOCK_ROLES:
                 if role["role_id"] == material_id:
                     if name is not None:
@@ -1038,25 +1010,20 @@ async def update_material(
                     if audio_id is not None:
                         role["audio_id"] = audio_id
                     if loop_videos is not None:
-                        try:
-                            role["loop_videos"] = json.loads(loop_videos)
-                        except Exception as e:
-                            logger.warning(f"解析循环视频列表失败: {e}")
+                        role["loop_videos"] = loop_videos if isinstance(loop_videos, list) else []
                     if is_double_mode is not None:
                         role["is_double_mode"] = is_double_mode
                     if left_audio_id is not None:
                         role["left_audio_id"] = left_audio_id
                     if right_audio_id is not None:
                         role["right_audio_id"] = right_audio_id
-                    # 画外音字段更新（复制到角色目录，与创建逻辑一致）
                     if pip_video_path is not None:
-                        role["pip_video_path"] = copy_video_to_role_dir(pip_video_path) if pip_video_path else ""
+                        role["pip_video_path"] = _copy_video_to_role_dir(pip_video_path, role_dir) if pip_video_path else ""
                     if pip_left_video_path is not None:
-                        role["pip_left_video_path"] = copy_video_to_role_dir(pip_left_video_path) if pip_left_video_path else ""
+                        role["pip_left_video_path"] = _copy_video_to_role_dir(pip_left_video_path, role_dir) if pip_left_video_path else ""
                     if pip_right_video_path is not None:
-                        role["pip_right_video_path"] = copy_video_to_role_dir(pip_right_video_path) if pip_right_video_path else ""
-                    
-                    # 重新计算视频总数
+                        role["pip_right_video_path"] = _copy_video_to_role_dir(pip_right_video_path, role_dir) if pip_right_video_path else ""
+
                     video_count = 0
                     if role.get("opening_video"):
                         video_count += 1
@@ -1064,30 +1031,30 @@ async def update_material(
                     if role.get("ending_video"):
                         video_count += 1
                     role["video_count"] = video_count
-                    
+
                     save_mock_roles()
                     logger.info(f"更新角色素材: {material_id}")
                     return DeleteResponse(code=200, message="素材更新成功")
             raise HTTPException(status_code=404, detail="角色不存在")
-            
+
         elif type == "scene":
+            scene_videos = data.get("scene_videos")
             for scene in MOCK_SCENES:
                 if scene["scene_id"] == material_id:
                     if name is not None:
                         scene["scene_name"] = name
                     if scene_videos is not None:
-                        try:
-                            scene["scene_videos"] = json.loads(scene_videos)
-                            scene["video_count"] = len(scene["scene_videos"])
-                        except Exception as e:
-                            logger.warning(f"解析场景视频列表失败: {e}")
-                    
+                        scene["scene_videos"] = scene_videos if isinstance(scene_videos, list) else []
+                        scene["video_count"] = len(scene["scene_videos"])
+
                     save_mock_scenes()
                     logger.info(f"更新场景素材: {material_id}")
                     return DeleteResponse(code=200, message="素材更新成功")
             raise HTTPException(status_code=404, detail="场景不存在")
-            
+
         elif type == "bgm":
+            duration = data.get("duration")
+            path = data.get("path")
             for bgm in MOCK_BGMS:
                 if bgm["bgm_id"] == material_id:
                     if name is not None:
@@ -1100,7 +1067,10 @@ async def update_material(
                     logger.info(f"更新BGM素材: {material_id}, duration={duration}, path={path}")
                     return DeleteResponse(code=200, message="素材更新成功")
             raise HTTPException(status_code=404, detail="BGM不存在")
+
         elif type == "audio":
+            duration = data.get("duration")
+            path = data.get("path")
             for audio in MOCK_AUDIOS:
                 if audio["id"] == material_id:
                     if name is not None:
@@ -1113,9 +1083,10 @@ async def update_material(
                     logger.info(f"更新音频素材: {material_id}, duration={duration}, path={path}")
                     return DeleteResponse(code=200, message="素材更新成功")
             raise HTTPException(status_code=404, detail="音频不存在")
+
         else:
             raise HTTPException(status_code=400, detail=f"不支持的素材类型: {type}")
-            
+
     except HTTPException:
         raise
     except Exception as e:

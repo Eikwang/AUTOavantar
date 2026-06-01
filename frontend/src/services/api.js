@@ -71,73 +71,11 @@ export const materialApi = {
   // 获取素材详情
   getMaterial: (materialId) => request.get(`/api/materials/${materialId}`),
 
-  // 创建素材 - 使用查询参数，因为后端期望 query.type 和 query.name
-  create: (data) => {
-    const params = { type: data.type, name: data.name }
-    if (data.type === 'role') {
-      params.role_type = data.role_type
-      params.scenes = data.scenes
-      params.opening_video = data.opening_video
-      params.loop_videos = JSON.stringify(data.loop_videos || [])
-      params.ending_video = data.ending_video
-      params.audio_id = data.audio_id
-      params.is_double_mode = data.is_double_mode || false
-      if (data.is_double_mode) {
-        params.left_audio_id = data.left_audio_id
-        params.right_audio_id = data.right_audio_id
-        if (data.pip_left_video_path) params.pip_left_video_path = data.pip_left_video_path
-        if (data.pip_right_video_path) params.pip_right_video_path = data.pip_right_video_path
-      } else {
-        if (data.pip_video_path) params.pip_video_path = data.pip_video_path
-      }
-    }
-    if (data.type === 'scene') {
-      params.scene_videos = JSON.stringify(data.scene_videos || [])
-    }
-    if (data.type === 'audio') {
-      params.audio_clips = JSON.stringify(data.audio_clips)
-      params.duration = data.duration
-    }
-    if (data.type === 'bgm') {
-      params.bgm_path = data.bgm_path
-      params.duration = data.duration
-    }
-    return request.post('/api/materials', null, { params })
-  },
+  // 创建素材 - 使用 JSON body
+  create: (data) => request.post('/api/materials', data),
 
-  // 更新素材 - 使用查询参数
-  update: (materialId, data) => {
-    const params = { type: data.type, name: data.name }
-    if (data.type === 'role') {
-      params.role_type = data.role_type
-      params.scenes = data.scenes
-      params.opening_video = data.opening_video
-      params.loop_videos = JSON.stringify(data.loop_videos || [])
-      params.ending_video = data.ending_video
-      params.audio_id = data.audio_id
-      params.is_double_mode = data.is_double_mode || false
-      if (data.is_double_mode) {
-        params.left_audio_id = data.left_audio_id
-        params.right_audio_id = data.right_audio_id
-        if (data.pip_left_video_path) params.pip_left_video_path = data.pip_left_video_path
-        if (data.pip_right_video_path) params.pip_right_video_path = data.pip_right_video_path
-      } else {
-        if (data.pip_video_path) params.pip_video_path = data.pip_video_path
-      }
-    }
-    if (data.type === 'scene') {
-      params.scene_videos = JSON.stringify(data.scene_videos || [])
-    }
-    if (data.type === 'audio') {
-      if (data.audio_clips !== undefined) params.audio_clips = JSON.stringify(data.audio_clips)
-      if (data.duration !== undefined) params.duration = data.duration
-    }
-    if (data.type === 'bgm') {
-      params.bgm_path = data.bgm_path
-      params.duration = data.duration
-    }
-    return request.put(`/api/materials/${materialId}`, null, { params })
-  },
+  // 更新素材 - 使用 JSON body
+  update: (materialId, data) => request.put(`/api/materials/${materialId}`, data),
 
   // 删除素材
   delete: (materialId, type) => request.delete(`/api/materials/${materialId}`, { params: { type } }),

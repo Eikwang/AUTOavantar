@@ -29,9 +29,9 @@ def get_app_dir() -> Path:
 def find_python() -> str:
     """查找 Python 解释器"""
     app_dir = get_app_dir()
-    py310_path = app_dir / "py310" / "python.exe"
-    if py310_path.exists():
-        return str(py310_path)
+    runtime_path = app_dir / "runtime" / "python.exe"
+    if runtime_path.exists():
+        return str(runtime_path)
     return "python"
 
 
@@ -68,10 +68,10 @@ def execute_git_pull(app_dir: Path) -> tuple:
     Returns:
         (success, message)
     """
-    # 优先使用 py310 中的 git，然后尝试系统 git
+    # 优先使用 runtime 中的 git，然后尝试系统 git
     git_paths = [
-        app_dir / "py310" / "git" / "bin" / "git.exe",
-        app_dir / "py310" / "git-cmd.exe",
+        app_dir / "runtime" / "git" / "bin" / "git.exe",
+        app_dir / "runtime" / "git-cmd.exe",
         "git"
     ]
 
