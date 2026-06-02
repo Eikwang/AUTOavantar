@@ -107,6 +107,13 @@ class PathManager:
         """最终输出目录（项目根目录/output）"""
         return str(self._final_output_dir)
 
+    @property
+    def merged_dir(self) -> str:
+        """合并输出目录（backend/output/merged）"""
+        merged = self._output_dir / "merged"
+        merged.mkdir(parents=True, exist_ok=True)
+        return str(merged)
+
     def get_audio_path(self, filename: str) -> str:
         """获取音频文件路径"""
         return str(self._audio_temp_dir / filename)

@@ -10,11 +10,18 @@ import time
 import uuid
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
+from pathlib import Path as _Path
 from pathlib import Path
 
 from api.utils.async_subprocess import async_run_subprocess, async_run_ffmpeg, async_run_ffprobe
 
 from core.models.task import ScriptSegment, Task, TaskConfig
+
+_PROJECT_ROOT = _Path(__file__).parent.parent.parent
+_FFMPEG_EXE = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
+_FFPROBE_EXE = "ffprobe.exe" if platform.system() == "Windows" else "ffprobe"
+FFMPEG_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFMPEG_EXE)
+FFPROBE_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFPROBE_EXE)
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +169,7 @@ class AudioProcessor:
 
         # 使用 ffmpeg 提取音频
         cmd = [
-            "ffmpeg",
+            FFMPEG_PATH,
             "-i", video_path,
             "-vn",  # 不包含视频
             "-acodec", "pcm_s16le",  # 音频编码
@@ -773,7 +780,7 @@ class AudioProcessor:
             filter_complex = f"[0:a]adelay={buffer_ms}|{buffer_ms},apad=whole_dur={total_duration}[a]"
 
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-i", audio_path,
                 "-filter_complex", filter_complex,
                 "-map", "[a]",
@@ -1061,7 +1068,7 @@ class AudioProcessor:
             temp_merged_path = os.path.join(self.output_dir, f"temp_merged_{speaker}_{safe_tone}_{task_id}.wav")
 
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-f", "concat",
                 "-safe", "0",
                 "-i", temp_concat_file,
@@ -1120,7 +1127,7 @@ class AudioProcessor:
             if filter_parts:
                 filter_complex = f"[0:a]{','.join(filter_parts)}[a]"
                 cmd = [
-                    "ffmpeg",
+                    FFMPEG_PATH,
                     "-i", temp_merged_path,
                     "-filter_complex", filter_complex,
                     "-map", "[a]",
@@ -1174,7 +1181,7 @@ class AudioProcessor:
             silence_path = os.path.join(self.output_dir, f"silence_{uuid.uuid4().hex[:8]}.wav")
 
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-f", "lavfi",
                 "-i", f"anullsrc=r=16000:cl=mono",
                 "-t", str(duration),
@@ -1232,7 +1239,7 @@ class AudioProcessor:
                         f.write(f"file '{escaped_path}'\n")
             
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-f", "concat",
                 "-safe", "0",
                 "-i", concat_file,
@@ -1319,7 +1326,7 @@ class AudioProcessor:
             
             # 合并所有音频段落
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-f", "concat",
                 "-safe", "0",
                 "-i", temp_concat_file,
@@ -1365,7 +1372,7 @@ class AudioProcessor:
                 filter_complex = f"[0:a]apad=whole_dur={audio_total_duration + silence_duration}[a]"
             
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-i", temp_merged_path,
                 "-af", filter_complex,
                 "-c:a", "pcm_s16le",
@@ -1593,7 +1600,7 @@ class AudioProcessor:
                     f.write(f"file '{path}'\n")
 
             cmd = [
-                "ffmpeg", "-f", "concat", "-safe", "0",
+                FFMPEG_PATH, "-f", "concat", "-safe", "0",
                 "-i", list_file, "-c", "copy", output_path
             ]
 
@@ -1628,7 +1635,7 @@ class AudioProcessor:
         output_path = audio_path.replace(".wav", "_fade.wav")
 
         cmd = [
-            "ffmpeg", "-i", audio_path,
+            FFMPEG_PATH, "-i", audio_path,
             "-af", f"afade=t=in:st=0:d={fade_in},afade=t=out:st=-{fade_out}:d={fade_out}",
             output_path
         ]

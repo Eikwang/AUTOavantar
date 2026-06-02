@@ -194,7 +194,7 @@ async def lifespan(app: FastAPI):
 
     # API 已就绪，可以开始接收请求
     logger.info("=" * 50)
-    logger.info("✅ AUTOavantar API 服务已就绪")
+    logger.info("[OK] AUTOavantar API 服务已就绪")
     logger.info("   引擎正在后台加载中，首次任务可能需要等待...")
     logger.info("=" * 50)
 

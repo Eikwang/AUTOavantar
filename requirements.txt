@@ -266,7 +266,7 @@ tk==0.1.0
 tokenizers==0.22.2
 tomli==2.4.1
 tomlkit==0.12.0
-torch @ file:///D:/AI/AUTOavantar/py310/torch-2.8.0%2Bcu128-cp310-cp310-win_amd64.whl#sha256=43938e9a174c90e5eb9e906532b2f1e21532bbfa5a61b65193b4f54714d34f9e
+torch @ file:///D:/AI/AUTOavantar/runtime/torch-2.8.0%2Bcu128-cp310-cp310-win_amd64.whl#sha256=43938e9a174c90e5eb9e906532b2f1e21532bbfa5a61b65193b4f54714d34f9e
 torch-stoi==0.2.3
 torchaudio==2.8.0+cu128
 torchcodec==0.10.0

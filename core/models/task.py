@@ -623,6 +623,10 @@ class TaskConfig:
         transition_random_all: bool = False,
         transition_duration: float = 0.5,
         enable_double_mode: bool = False,
+        enable_pip: bool = False,
+        pip_video_path: Optional[str] = None,
+        pip_left_video_path: Optional[str] = None,
+        pip_right_video_path: Optional[str] = None,
         **kwargs
     ):
         self.tts_speed = tts_speed
@@ -678,6 +682,10 @@ class TaskConfig:
         self.transition_random_all = transition_random_all
         self.transition_duration = transition_duration
         self.enable_double_mode = enable_double_mode
+        self.enable_pip = enable_pip
+        self.pip_video_path = pip_video_path
+        self.pip_left_video_path = pip_left_video_path
+        self.pip_right_video_path = pip_right_video_path
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -728,7 +736,11 @@ class TaskConfig:
             "transition_random": self.transition_random,
             "transition_random_all": self.transition_random_all,
             "transition_duration": self.transition_duration,
-            "enable_double_mode": self.enable_double_mode
+            "enable_double_mode": self.enable_double_mode,
+            "enable_pip": self.enable_pip,
+            "pip_video_path": self.pip_video_path,
+            "pip_left_video_path": self.pip_left_video_path,
+            "pip_right_video_path": self.pip_right_video_path,
         }
 
     @classmethod
@@ -785,6 +797,10 @@ class TaskConfig:
         config.transition_random_all = data.get("transition_random_all", False)
         config.transition_duration = data.get("transition_duration", 0.5)
         config.enable_double_mode = data.get("enable_double_mode", False)
+        config.enable_pip = data.get("enable_pip", False)
+        config.pip_video_path = data.get("pip_video_path")
+        config.pip_left_video_path = data.get("pip_left_video_path")
+        config.pip_right_video_path = data.get("pip_right_video_path")
         return config
 
 

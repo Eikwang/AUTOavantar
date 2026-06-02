@@ -307,13 +307,11 @@
               <div class="video-preview" v-if="createForm.ending_video">
                 <div class="video-preview-with-actions">
                   <video :src="getFileUrl(createForm.ending_video, createForm.ending_video_ts)" controls style="object-fit:contain" />
-                  <div class="video-clip-action">
-                    <el-button type="warning" size="small" @click="openClipDialog('ending', {path: createForm.ending_video, name: '结束视频'}, 'video')">
-                      <el-icon><Scissor /></el-icon> 剪辑
-                    </el-button>
-                  </div>
                 </div>
                 <div class="video-actions">
+                  <el-button type="warning" size="small" @click="openClipDialog('ending', {path: createForm.ending_video, name: '结束视频'}, 'video')">
+                    <el-icon><Scissor /></el-icon> 剪辑
+                  </el-button>
                   <el-button size="small" @click="analyzeFace(createForm.ending_video, 'ending')" :loading="faceAnalysisLoading[createForm.ending_video] && faceAnalysisLoading[createForm.ending_video] !== 'completed'" :disabled="(faceAnalysisLoading[createForm.ending_video] && faceAnalysisLoading[createForm.ending_video] !== 'completed') || analyzedVideoPaths[createForm.ending_video]">
                     <el-icon><Monitor /></el-icon> {{ faceAnalysisLoading[createForm.ending_video] === 'completed' ? '已完成' : (faceAnalysisLoading[createForm.ending_video] || analyzedVideoPaths[createForm.ending_video] ? '分析中...' : '面部分析') }}
                   </el-button>
@@ -409,6 +407,12 @@
                   <video :src="getFileUrl(createForm.pip_video_path)" controls style="object-fit:contain" />
                 </div>
                 <div class="video-actions-row">
+                  <el-button type="warning" size="small" @click="openClipDialog('pip', {path: createForm.pip_video_path, name: '画外音视频'}, 'video')">
+                    <el-icon><Scissor /></el-icon> 剪辑
+                  </el-button>
+                  <el-button size="small" @click="analyzeFace(createForm.pip_video_path, 'pip')" :loading="faceAnalysisLoading[createForm.pip_video_path] && faceAnalysisLoading[createForm.pip_video_path] !== 'completed'" :disabled="(faceAnalysisLoading[createForm.pip_video_path] && faceAnalysisLoading[createForm.pip_video_path] !== 'completed') || analyzedVideoPaths[createForm.pip_video_path]">
+                    <el-icon><Monitor /></el-icon> {{ faceAnalysisLoading[createForm.pip_video_path] === 'completed' ? '已完成' : (faceAnalysisLoading[createForm.pip_video_path] || analyzedVideoPaths[createForm.pip_video_path] ? '分析中...' : '面部分析') }}
+                  </el-button>
                   <el-button size="small" type="danger" @click="removeVideo('pip')">
                     <el-icon><Delete /></el-icon>
                   </el-button>
@@ -439,6 +443,12 @@
                       <video :src="getFileUrl(createForm.pip_left_video_path)" controls style="object-fit:contain" />
                     </div>
                     <div class="video-actions-row">
+                      <el-button type="warning" size="small" @click="openClipDialog('pip_left', {path: createForm.pip_left_video_path, name: '画外音视频(左)'}, 'video')">
+                        <el-icon><Scissor /></el-icon> 剪辑
+                      </el-button>
+                      <el-button size="small" @click="analyzeFace(createForm.pip_left_video_path, 'pip_left')" :loading="faceAnalysisLoading[createForm.pip_left_video_path] && faceAnalysisLoading[createForm.pip_left_video_path] !== 'completed'" :disabled="(faceAnalysisLoading[createForm.pip_left_video_path] && faceAnalysisLoading[createForm.pip_left_video_path] !== 'completed') || analyzedVideoPaths[createForm.pip_left_video_path]">
+                        <el-icon><Monitor /></el-icon> {{ faceAnalysisLoading[createForm.pip_left_video_path] === 'completed' ? '已完成' : (faceAnalysisLoading[createForm.pip_left_video_path] || analyzedVideoPaths[createForm.pip_left_video_path] ? '分析中...' : '面部分析') }}
+                      </el-button>
                       <el-button size="small" type="danger" @click="removeVideo('pip_left')">
                         <el-icon><Delete /></el-icon>
                       </el-button>
@@ -462,6 +472,12 @@
                       <video :src="getFileUrl(createForm.pip_right_video_path)" controls style="object-fit:contain" />
                     </div>
                     <div class="video-actions-row">
+                      <el-button type="warning" size="small" @click="openClipDialog('pip_right', {path: createForm.pip_right_video_path, name: '画外音视频(右)'}, 'video')">
+                        <el-icon><Scissor /></el-icon> 剪辑
+                      </el-button>
+                      <el-button size="small" @click="analyzeFace(createForm.pip_right_video_path, 'pip_right')" :loading="faceAnalysisLoading[createForm.pip_right_video_path] && faceAnalysisLoading[createForm.pip_right_video_path] !== 'completed'" :disabled="(faceAnalysisLoading[createForm.pip_right_video_path] && faceAnalysisLoading[createForm.pip_right_video_path] !== 'completed') || analyzedVideoPaths[createForm.pip_right_video_path]">
+                        <el-icon><Monitor /></el-icon> {{ faceAnalysisLoading[createForm.pip_right_video_path] === 'completed' ? '已完成' : (faceAnalysisLoading[createForm.pip_right_video_path] || analyzedVideoPaths[createForm.pip_right_video_path] ? '分析中...' : '面部分析') }}
+                      </el-button>
                       <el-button size="small" type="danger" @click="removeVideo('pip_right')">
                         <el-icon><Delete /></el-icon>
                       </el-button>

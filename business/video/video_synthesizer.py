@@ -14,12 +14,20 @@ import tempfile
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from math import gcd
+from pathlib import Path as _Path
 
 from core.models.task import ScriptSegment, Task, TaskConfig
 from core.paths import get_path_manager
 from core.utils.video_utils import calculate_aspect_ratio, calculate_aspect_ratio_error
 
 from api.utils.async_subprocess import async_run_subprocess, async_run_ffmpeg, async_run_ffprobe
+
+# ffmpeg/ffprobe 绝对路径（跨平台兼容）
+_PROJECT_ROOT = _Path(__file__).parent.parent.parent
+_FFMPEG_EXE = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
+_FFPROBE_EXE = "ffprobe.exe" if platform.system() == "Windows" else "ffprobe"
+FFMPEG_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFMPEG_EXE)
+FFPROBE_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFPROBE_EXE)
 
 # 导入转场效果常量
 from business.postprocess.transition_effects import (
@@ -816,7 +824,7 @@ class VideoSynthesizer:
         """获取音频时长"""
         try:
             cmd = [
-                'ffprobe',
+                FFPROBE_PATH,
                 '-v', 'error',
                 '-show_entries', 'format=duration',
                 '-of', 'default=noprint_wrappers=1:nokey=1',
@@ -874,7 +882,7 @@ class VideoSynthesizer:
         if target_duration <= video_duration:
             # 音频时长小于等于视频时长：直接裁剪视频
             cmd = [
-                'ffmpeg',
+                FFMPEG_PATH,
                 '-i', video_path,
                 '-i', audio_path,
                 '-c:v', 'copy',
@@ -891,7 +899,7 @@ class VideoSynthesizer:
             logger.info(f"需要循环播放视频 {loop_count} 次")
 
             cmd = [
-                'ffmpeg',
+                FFMPEG_PATH,
                 '-stream_loop', str(loop_count - 1),
                 '-i', video_path,
                 '-i', audio_path,
@@ -1328,27 +1336,30 @@ class VideoSynthesizer:
             
             # 第一步：收集所有视频的信息，确定目标分辨率和帧率
             video_infos = []
-            target_width = 0
-            target_height = 0
-            target_fps = 30
-            
+            all_infos = []
+
             for path in video_paths:
                 if not os.path.isabs(path):
                     path = os.path.abspath(path)
                 info = await self._get_video_info(path)
                 if info:
                     video_infos.append((path, info))
-                    # 使用最大的分辨率作为目标
-                    if info.get("width", 0) > target_width or info.get("height", 0) > target_height:
-                        target_width = max(target_width, info.get("width", 0))
-                        target_height = max(target_height, info.get("height", 0))
-                    # 使用最常见的帧率
-                    if info.get("fps", 0) > 0:
-                        target_fps = info.get("fps", 30)
+                    all_infos.append(info)
                 else:
                     video_infos.append((path, None))
-            
-            logger.info(f"目标分辨率: {target_width}x{target_height}, 目标帧率: {target_fps}")
+
+            if not all_infos:
+                logger.error("无法获取任何视频的元数据")
+                return None
+
+            # 选择面积最大（像素数最多）的视频作为基准，使用其完整分辨率
+            # 不能分别对 width 和 height 取 max，否则横屏+竖屏混合会得到正方形等荒谬比例
+            base_info = max(all_infos, key=lambda m: m.get('width', 0) * m.get('height', 0))
+            target_width = base_info.get('width', 1920)
+            target_height = base_info.get('height', 1080)
+            target_fps = max(m.get('fps', 30.0) for m in all_infos)
+
+            logger.info(f"目标分辨率: 基准视频 {target_width}x{target_height}（面积最大）, 目标帧率: {target_fps}")
             
             # 第二步：检查是否所有视频参数一致
             needs_normalize_all = False
@@ -1395,7 +1406,7 @@ class VideoSynthesizer:
             # 使用重新编码的方式合并，确保所有视频参数一致
             # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
             cmd = [
-                "ffmpeg", "-f", "concat", "-safe", "0",
+                FFMPEG_PATH, "-f", "concat", "-safe", "0",
                 "-i", list_file,
                 "-c:v", "libx264",
                 "-preset", "medium",
@@ -1476,11 +1487,13 @@ class VideoSynthesizer:
                     logger.error("无法获取任何视频的元数据")
                     return None
 
-                target_width = max(m.get('width', 1920) for m in all_metadata)
-                target_height = max(m.get('height', 1080) for m in all_metadata)
+                # 选择面积最大（像素数最多）的视频作为基准，使用其完整分辨率
+                base_meta = max(all_metadata, key=lambda m: m.get('width', 0) * m.get('height', 0))
+                target_width = base_meta.get('width', 1920)
+                target_height = base_meta.get('height', 1080)
                 target_fps = max(m.get('fps', 30.0) for m in all_metadata)
 
-                logger.info(f"统一视频参数: 分辨率 {target_width}x{target_height}, 帧率 {target_fps}fps")
+                logger.info(f"转场合并统一视频参数: 基准视频 {target_width}x{target_height}（面积最大）, 帧率 {target_fps}fps")
 
                 # 2. 标准化所有视频
                 normalized_paths = []
@@ -1553,7 +1566,7 @@ class VideoSynthesizer:
 
                 # 5. 执行 FFmpeg 命令
                 # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
-                cmd = ["ffmpeg"]
+                cmd = [FFMPEG_PATH]
 
                 for path in normalized_paths:
                     cmd.extend(["-i", path])
@@ -1663,6 +1676,9 @@ class VideoSynthesizer:
 
                 accumulated_duration += video_durations[i]
                 current_offset = accumulated_duration - transition_duration
+                if current_offset <= 0:
+                    logger.warning(f"xfade offset 计算为 {current_offset:.3f}，调整为安全值 0.5")
+                    current_offset = 0.5
 
                 filter_part = f"{current_input}[{i+1}:v]xfade=transition={effect}:duration={transition_duration}:offset={current_offset:.3f}{output_label}"
                 filter_parts.append(filter_part)
@@ -1696,7 +1712,7 @@ class VideoSynthesizer:
         # 备用方法：使用 ffprobe
         try:
             cmd = [
-                "ffprobe", "-v", "error",
+                FFPROBE_PATH, "-v", "error",
                 "-show_entries", "format=duration",
                 "-of", "default=noprint_wrappers=1:nokey=1",
                 video_path
@@ -1744,7 +1760,7 @@ class VideoSynthesizer:
 
             # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-f", "concat",
                 "-safe", "0",
                 "-i", concat_file,
@@ -1781,7 +1797,7 @@ class VideoSynthesizer:
 
         # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
         cmd = [
-            "ffmpeg", "-f", "concat", "-safe", "0",
+            FFMPEG_PATH, "-f", "concat", "-safe", "0",
             "-i", list_file, "-c", "copy", output_path
         ]
 
@@ -1802,7 +1818,7 @@ class VideoSynthesizer:
         try:
             # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-i", video_path,
                 "-vn",
                 "-acodec", "pcm_s16le",
@@ -1852,7 +1868,7 @@ class VideoSynthesizer:
                 # 同时有左右音频，使用 amix 混合并保持音量
                 # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
                 cmd = [
-                    "ffmpeg",
+                    FFMPEG_PATH,
                     "-i", left_audio_path,
                     "-i", right_audio_path,
                     "-filter_complex", "amix=inputs=2:duration=longest,volume=2",
@@ -1885,7 +1901,7 @@ class VideoSynthesizer:
 
             # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-i", video_path,
                 "-i", combined_audio,
                 "-c:v", "copy",
@@ -1961,7 +1977,7 @@ class VideoSynthesizer:
 
             # 使用 xfade 转场合并左右视频，保留左边视频的音频
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-i", left_video_path,
                 "-i", right_video_path,
                 "-filter_complex",
@@ -2010,7 +2026,7 @@ class VideoSynthesizer:
 
         # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
         cmd = [
-            "ffmpeg", "-f", "concat", "-safe", "0",
+            FFMPEG_PATH, "-f", "concat", "-safe", "0",
             "-i", list_file, "-c", "copy", concat_audio
         ]
         await async_run_ffmpeg(cmd, check=True)
@@ -2018,7 +2034,7 @@ class VideoSynthesizer:
 
         # 合并音频和视频
         cmd = [
-            "ffmpeg", "-i", video_path, "-i", concat_audio,
+            FFMPEG_PATH, "-i", video_path, "-i", concat_audio,
             "-c:v", "copy", "-c:a", "aac", "-strict", "experimental",
             output_path
         ]
@@ -2042,7 +2058,7 @@ class VideoSynthesizer:
 
         try:
             cmd = [
-                "ffprobe",
+                FFPROBE_PATH,
                 "-v", "quiet",
                 "-print_format", "json",
                 "-show_format",
@@ -2081,7 +2097,7 @@ class VideoSynthesizer:
             else:
                 fps = float(fps_str)
 
-            return {
+            result = {
                 "width": video_stream.get("width", 0),
                 "height": video_stream.get("height", 0),
                 "fps": fps,
@@ -2090,6 +2106,23 @@ class VideoSynthesizer:
                 "has_audio": audio_stream is not None,
                 "audio_codec": audio_stream.get("codec_name", "") if audio_stream else None
             }
+
+            # 处理 SAR（Sample Aspect Ratio）：计算真实显示分辨率
+            # SAR 定义：display_width = pixel_width * SAR_num / SAR_den，高度不变
+            sar_str = video_stream.get("sample_aspect_ratio", "1:1")
+            try:
+                sar_num, sar_den = map(int, sar_str.split("/"))
+                if sar_den > 0 and (sar_num != sar_den):
+                    display_width = round(result["width"] * sar_num / sar_den)
+                    logger.debug(f"视频 SAR={sar_str}, 像素尺寸={result['width']}x{result['height']}, 显示尺寸={display_width}x{result['height']}")
+                    result["pixel_width"] = result["width"]
+                    result["pixel_height"] = result["height"]
+                    result["width"] = display_width
+                    result["sar"] = sar_str
+            except (ValueError, ZeroDivisionError):
+                pass
+
+            return result
 
         except Exception as e:
             logger.error(f"获取视频信息失败: {e}")
@@ -2213,7 +2246,7 @@ class VideoSynthesizer:
 
             # 注意: async_run_ffmpeg 会自动添加 -y 参数，所以移除 cmd 中的 -y
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-i", input_path,
                 "-c:v", "libx264",
                 "-preset", "medium",
@@ -2263,11 +2296,16 @@ class VideoSynthesizer:
             是否成功
         """
         try:
+            # 参数验证
+            if target_width <= 0 or target_height <= 0:
+                logger.error(f"无效的目标分辨率: {target_width}x{target_height}")
+                return False
+
             # 获取输入视频的实际尺寸
             video_info = await self._get_video_info(input_path)
             if not video_info:
                 logger.warning(f"无法获取视频信息，使用默认拉伸缩放: {input_path}")
-                scale_filter = f"scale={target_width}:{target_height}"
+                scale_filter = f"scale={target_width}:{target_height},setsar=1:1"
             else:
                 src_width = video_info.get("width", 0)
                 src_height = video_info.get("height", 0)
@@ -2281,25 +2319,27 @@ class VideoSynthesizer:
                     logger.info(f"视频尺寸已一致 {src_width}x{src_height}，仅统一编码帧率")
                 elif ratio_error <= error_threshold:
                     # 比例误差小，拉伸缩放
-                    scale_filter = f"scale={target_width}:{target_height}"
+                    scale_filter = f"scale={target_width}:{target_height},setsar=1:1"
                     logger.info(f"视频 {src_width}x{src_height} 比例误差 {ratio_error:.2f}% <= {error_threshold}%，拉伸缩放到 {target_width}x{target_height}")
                 else:
                     # 比例误差大，填充缩放：等比缩放 + 模糊背景填充
-                    # 先缩放视频到目标尺寸（拉伸），作为模糊背景层
-                    # 再等比缩放视频（保持比例），叠加在模糊背景上居中
+                    # force_original_aspect_ratio 缩放后像素尺寸可能不等于目标尺寸，
+                    # 需要在 overlay 后强制裁剪到精确目标尺寸并设置 SAR=1:1
                     scale_filter = (
                         f"split[original][bg];"
                         f"[bg]scale={target_width}:{target_height}:force_original_aspect_ratio=increase,"
+                        f"crop={target_width}:{target_height},"
                         f"boxblur=50:5,format=yuv420p[blurred_bg];"
                         f"[original]scale={target_width}:{target_height}:force_original_aspect_ratio=decrease,"
                         f"format=yuv420p[fg];"
-                        f"[blurred_bg][fg]overlay=(W-w)/2:(H-h)/2"
+                        f"[blurred_bg][fg]overlay=(W-w)/2:(H-h)/2,"
+                        f"crop={target_width}:{target_height},setsar=1:1"
                     )
                     logger.info(f"视频 {src_width}x{src_height} 比例误差 {ratio_error:.2f}% > {error_threshold}%，填充缩放到 {target_width}x{target_height}")
 
             # 构建 ffmpeg 命令
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-i", input_path,
             ]
             if scale_filter:
@@ -2411,7 +2451,7 @@ class VideoSynthesizer:
 
             # 使用 overlay 滤镜叠加画外音，保留场景视频音频
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-i", scene_video_path,
                 "-i", pip_video_path,
                 "-filter_complex", f"{pip_filter};[0:v][pip]overlay={pip_x}:{pip_y}[outv]",

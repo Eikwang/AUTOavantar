@@ -6,10 +6,18 @@
 import logging
 import os
 import numpy as np
+import platform
 from typing import Optional, Tuple
+from pathlib import Path as _Path
 from pathlib import Path
 
 from api.utils.async_subprocess import async_run_subprocess, async_run_ffmpeg, async_run_ffprobe
+
+_PROJECT_ROOT = _Path(__file__).parent.parent.parent
+_FFMPEG_EXE = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
+_FFPROBE_EXE = "ffprobe.exe" if platform.system() == "Windows" else "ffprobe"
+FFMPEG_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFMPEG_EXE)
+FFPROBE_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFPROBE_EXE)
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +71,7 @@ class AudioMixer:
             )
             
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-i", video_path,
                 "-i", bgm_path,
                 "-filter_complex", filter_complex,
@@ -112,7 +120,7 @@ class AudioMixer:
         
         try:
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-i", video_path,
                 "-i", bgm_path,
                 "-filter_complex",

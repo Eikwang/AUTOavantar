@@ -53,7 +53,7 @@ class TransNetV2Inference:
                 print(f"  - GPU: {torch.cuda.get_device_name(0)}")
                 print(f"  - CUDA 版本：{torch.version.cuda}")
             except Exception as e:
-                print(f"  ⚠️ 无法获取 GPU 信息：{e}")
+                print(f"  [!] 无法获取 GPU 信息：{e}")
                 self.device = torch.device('cpu')
                 print(f"  → 回退到 CPU")
 
@@ -105,7 +105,7 @@ class TransNetV2Inference:
             try:
                 self.progress_callback(progress, stage, processed, total)
             except Exception as e:
-                print(f"[TransNetV2] ⚠️ 进度回调失败：{e}")
+                print(f"[TransNetV2] [!] 进度回调失败：{e}")
 
     def _extract_frames_from_video(
         self,
@@ -435,7 +435,7 @@ if __name__ == "__main__":
     
     # 检查文件
     if not os.path.exists(args.video):
-        print(f"❌ 视频文件不存在：{args.video}")
+        print(f"[X] 视频文件不存在：{args.video}")
         sys.exit(1)
     
     # 创建推理器
@@ -451,7 +451,7 @@ if __name__ == "__main__":
     # 输出结果
     output_path = args.output or Path(args.video).with_suffix(".scenes.txt")
     np.savetxt(output_path, scenes, fmt="%d")
-    print(f"\n✅ 检测到 {len(scenes)} 个场景")
+    print(f"\n[OK] 检测到 {len(scenes)} 个场景")
     print(f"   结果已保存到：{output_path}")
     
     # 可视化
@@ -464,7 +464,7 @@ if __name__ == "__main__":
     total_duration = total_frames / fps if fps > 0 else 0
     avg_scene_length = np.mean([end - start + 1 for start, end in scenes])
     
-    print(f"\n📊 统计信息:")
+    print(f"\n(统计) 统计信息:")
     print(f"   视频时长：{total_duration:.2f}秒 ({total_frames}帧)")
     print(f"   场景数量：{len(scenes)}")
     print(f"   平均场景长度：{avg_scene_length:.1f}帧 ({avg_scene_length/fps:.2f}秒)")

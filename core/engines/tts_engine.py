@@ -41,6 +41,12 @@ import platform
 import subprocess
 import sys
 from typing import Optional, Dict, Any, List
+from pathlib import Path as _Path
+
+# FFmpeg 绝对路径（跨平台兼容）
+_PROJECT_ROOT = _Path(__file__).parent.parent.parent
+_FFMPEG_EXE = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
+FFMPEG_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFMPEG_EXE)
 
 logger = logging.getLogger("autoavantar.tts_engine")
 
@@ -214,9 +220,11 @@ class TTSEngine:
         os.makedirs(temp_dir, exist_ok=True)
 
         # 生成临时文件名（使用时间戳避免冲突）
+        # 保持源文件扩展名，让 ffmpeg 根据扩展名自动选择编码器
         import time
         timestamp = int(time.time() * 1000)
-        temp_filename = f"tts_speed_{timestamp}_{os.path.basename(audio_path)}"
+        src_ext = os.path.splitext(audio_path)[1] or ".wav"
+        temp_filename = f"tts_speed_{timestamp}{src_ext}"
         temp_path = os.path.join(temp_dir, temp_filename)
 
         # 确保 temp_path 不与现有文件冲突
@@ -243,12 +251,12 @@ class TTSEngine:
             tempo_filter = ",".join([f"atempo={f}" for f in factors])
 
         # 构建 ffmpeg 命令
+        # 不指定编码器，让 ffmpeg 根据输出扩展名自动选择
         cmd = [
-            "ffmpeg",
+            FFMPEG_PATH,
             "-y",  # 覆盖输出文件
             "-i", audio_path,
             "-filter:a", tempo_filter,
-            "-c:a", "pcm_s16le",  # 保持 WAV 格式
             temp_path
         ]
 

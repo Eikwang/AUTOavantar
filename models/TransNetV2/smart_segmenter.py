@@ -24,7 +24,7 @@ try:
     from mediapipe import ImageFormat
     MEDIAPIPE_AVAILABLE = True
 except ImportError:
-    print("[PoseDetector] ⚠️ MediaPipe 未安装，将使用简化检测")
+    print("[PoseDetector] [!] MediaPipe 未安装，将使用简化检测")
 
 
 @dataclass
@@ -120,7 +120,7 @@ class PoseDetector:
                     print(f"[PoseDetector] ✓ MediaPipe GPU 加速已启用 (GPU Delegate)")
                     return
                 except Exception as gpu_error:
-                    print(f"[PoseDetector] ⚠️ GPU 加速不可用：{gpu_error}")
+                    print(f"[PoseDetector] [!] GPU 加速不可用：{gpu_error}")
                     print(f"[PoseDetector] 回退到 CPU 模式")
             
             # 使用 CPU 模式（XNNPACK 加速）
@@ -405,14 +405,14 @@ class SmartVideoSegmenter:
                 self.pose_detector = PoseDetector(use_gpu=False)
                 print(f"[SmartSegmenter] 姿态检测器初始化成功")
             except Exception as e:
-                print(f"[SmartSegmenter] ⚠️ 姿态检测器初始化失败：{e}")
+                print(f"[SmartSegmenter] [!] 姿态检测器初始化失败：{e}")
 
         print(f"[SmartSegmenter] 初始化完成")
-        print(f"  - 场景检测：✅")
-        print(f"  - 音频检测：{'✅' if use_audio else '❌'}")
-        print(f"  - 光流检测：{'✅' if use_motion else '❌'}")
-        print(f"  - 亮度检测：{'✅' if use_brightness else '❌'}")
-        print(f"  - 姿态检测：{'✅' if self.pose_detector else '❌'}")
+        print(f"  - 场景检测：[OK]")
+        print(f"  - 音频检测：{'[OK]' if use_audio else '[X]'}")
+        print(f"  - 光流检测：{'[OK]' if use_motion else '[X]'}")
+        print(f"  - 亮度检测：{'[OK]' if use_brightness else '[X]'}")
+        print(f"  - 姿态检测：{'[OK]' if self.pose_detector else '[X]'}")
 
     def _report_progress(self, progress: int, stage: str, processed: int = 0, total: int = 0):
         """报告进度"""
@@ -420,7 +420,7 @@ class SmartVideoSegmenter:
             try:
                 self.progress_callback(progress, stage, processed, total)
             except Exception as e:
-                print(f"[SmartSegmenter] ⚠️ 进度回调失败：{e}")
+                print(f"[SmartSegmenter] [!] 进度回调失败：{e}")
     
     def segment_video(self, video_path: str) -> List[Tuple[int, int, str]]:
         """
@@ -468,7 +468,7 @@ class SmartVideoSegmenter:
                 print(f"      检测到 {len(silence_points)} 个沉默点")
                 self._report_progress(35, f"检测到 {len(silence_points)} 个沉默点", total_frames, total_frames)
             except Exception as e:
-                print(f"      ⚠️ 音频检测失败：{e}")
+                print(f"      [!] 音频检测失败：{e}")
         else:
             self._report_progress(35, "跳过音频检测", total_frames, total_frames)
 
@@ -482,7 +482,7 @@ class SmartVideoSegmenter:
                 print(f"      检测到 {len(motion_points)} 个动作变化点")
                 self._report_progress(50, f"检测到 {len(motion_points)} 个动作变化点", total_frames, total_frames)
             except Exception as e:
-                print(f"      ⚠️ 光流检测失败：{e}")
+                print(f"      [!] 光流检测失败：{e}")
         else:
             self._report_progress(50, "跳过光流检测", total_frames, total_frames)
 
@@ -496,7 +496,7 @@ class SmartVideoSegmenter:
                 print(f"      检测到 {len(brightness_points)} 个亮度变化点")
                 self._report_progress(60, f"检测到 {len(brightness_points)} 个亮度变化点", total_frames, total_frames)
             except Exception as e:
-                print(f"      ⚠️ 亮度检测失败：{e}")
+                print(f"      [!] 亮度检测失败：{e}")
         else:
             print(f"\n[4/5] 跳过亮度变化检测")
             self._report_progress(60, "跳过亮度检测", total_frames, total_frames)
@@ -511,7 +511,7 @@ class SmartVideoSegmenter:
                 print(f"      检测到 {len(pose_points)} 个姿态变化点")
                 self._report_progress(75, f"检测到 {len(pose_points)} 个姿态变化点", total_frames, total_frames)
             except Exception as e:
-                print(f"      ⚠️ 姿态检测失败：{e}")
+                print(f"      [!] 姿态检测失败：{e}")
         else:
             print(f"\n[5/5] 跳过姿态检测")
             self._report_progress(75, "跳过姿态检测", total_frames, total_frames)
@@ -521,7 +521,7 @@ class SmartVideoSegmenter:
         self._report_progress(80, "融合检测结果", total_frames, total_frames)
         final_segments = self._fuse_segment_points(segment_points, len(frames))
 
-        print(f"\n✅ 分割完成：共 {len(final_segments)} 个片段")
+        print(f"\n[OK] 分割完成：共 {len(final_segments)} 个片段")
         self._report_progress(85, f"分割完成，共 {len(final_segments)} 个片段", total_frames, total_frames)
 
         return final_segments
@@ -745,7 +745,7 @@ class SmartVideoSegmenter:
                 current_pose = self.pose_detector.detect_pose(frame)
             except Exception as e:
                 if i % 60 == 0:  # 偶尔打印错误，避免刷屏
-                    print(f"\n      ⚠️ 检测失败：{e}")
+                    print(f"\n      [!] 检测失败：{e}")
                 continue
             
             # 如果检测到姿态
@@ -857,7 +857,7 @@ def main():
     
     # 检查视频文件
     if not os.path.exists(args.video):
-        print(f"❌ 视频文件不存在：{args.video}")
+        print(f"[X] 视频文件不存在：{args.video}")
         sys.exit(1)
     
     # 创建分割器
@@ -883,7 +883,7 @@ def main():
         for i, (start, end, reason) in enumerate(segments):
             f.write(f"片段{i+1:03d}: {start:06d}-{end:06d} 帧 [{reason}]\n")
     
-    print(f"\n📊 片段统计:")
+    print(f"\n(统计) 片段统计:")
     print(f"   总片段数：{len(segments)}")
     
     # 按原因统计
@@ -895,7 +895,7 @@ def main():
     for reason, count in sorted(reason_counts.items(), key=lambda x: -x[1]):
         print(f"     - {reason}: {count} 个")
     
-    print(f"\n✅ 结果已保存到：{output_path}")
+    print(f"\n[OK] 结果已保存到：{output_path}")
     
     # 显示前 5 个片段
     print(f"\n前 5 个片段:")

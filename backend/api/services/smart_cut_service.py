@@ -12,10 +12,17 @@ import shutil
 import base64
 import asyncio
 import re
-from pathlib import Path
+from pathlib import Path as _Path, Path
 from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime
 import uuid
+
+# FFmpeg/FFprobe 绝对路径常量
+_PROJECT_ROOT = _Path(__file__).parent.parent.parent.parent
+_FFMPEG_EXE = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
+_FFPROBE_EXE = "ffprobe.exe" if platform.system() == "Windows" else "ffprobe"
+FFMPEG_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFMPEG_EXE)
+FFPROBE_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFPROBE_EXE)
 
 import cv2
 import numpy as np
@@ -836,7 +843,7 @@ class SmartCutService:
         """
         try:
             cmd = [
-                "ffmpeg", "-y",
+                FFMPEG_PATH, "-y",
                 "-ss", str(start_time),
                 "-i", video_path,
                 "-t", str(duration),
@@ -894,7 +901,7 @@ class SmartCutService:
 
             # 使用 FFmpeg 提取音频
             cmd = [
-                "ffmpeg", "-y",
+                FFMPEG_PATH, "-y",
                 "-i", segment_path,
                 "-vn",
                 "-acodec", "pcm_s16le",
@@ -1160,7 +1167,7 @@ class SmartCutService:
                     f.write(f"file '{seg_path}'\n")
 
             cmd = [
-                "ffmpeg", "-y",
+                FFMPEG_PATH, "-y",
                 "-f", "concat",
                 "-safe", "0",
                 "-i", str(concat_file),
@@ -1248,7 +1255,7 @@ class SmartCutService:
             final_output = prev_output
 
             # 构建完整命令
-            cmd = ["ffmpeg", "-y"]
+            cmd = [FFMPEG_PATH, "-y"]
             cmd.extend(inputs)
             cmd.extend([
                 "-filter_complex", ";".join(filter_parts),

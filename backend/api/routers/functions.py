@@ -10,8 +10,15 @@ import platform
 import uuid
 import asyncio
 from typing import Optional, List, Dict, Any
-from pathlib import Path
+from pathlib import Path as _Path, Path
 from datetime import datetime
+
+# FFmpeg/FFprobe 绝对路径常量
+_PROJECT_ROOT = _Path(__file__).parent.parent.parent.parent
+_FFMPEG_EXE = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
+_FFPROBE_EXE = "ffprobe.exe" if platform.system() == "Windows" else "ffprobe"
+FFMPEG_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFMPEG_EXE)
+FFPROBE_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFPROBE_EXE)
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
 from pydantic import BaseModel
@@ -657,7 +664,7 @@ async def extract_audio(request: ExtractAudioRequest):
         relative_audio_path = os.path.relpath(audio_path, str(backend_root / settings.UPLOAD_DIR))
 
         cmd = [
-            "ffmpeg", "-i", full_video_path,
+            FFMPEG_PATH, "-i", full_video_path,
             "-vn", "-acodec", "pcm_s16le",
             "-ar", "16000", "-ac", "1",
             "-y", audio_path
@@ -666,7 +673,7 @@ async def extract_audio(request: ExtractAudioRequest):
 
         duration = 0.0
         probe_cmd = [
-            "ffprobe", "-v", "error",
+            FFPROBE_PATH, "-v", "error",
             "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1",
             audio_path

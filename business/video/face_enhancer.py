@@ -12,10 +12,10 @@ from typing import Optional, Callable, List, Tuple
 
 logger = logging.getLogger(__name__)
 
-# 模型路径
+# 模型路径 - 向上3级到项目根目录，然后进入 models
 GFPGAN_MODEL_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "engines", "heygem", "gfpgan-1024.onnx"
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "models", "gfpgan-1024.onnx"
 )
 
 

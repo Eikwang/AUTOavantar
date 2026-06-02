@@ -10,8 +10,16 @@ import platform
 import signal
 import subprocess
 from typing import List, Optional, Tuple
+from pathlib import Path as _Path
 
 logger = logging.getLogger("async_subprocess")
+
+# FFmpeg/FFprobe 绝对路径（跨平台兼容）
+_PROJECT_ROOT = _Path(__file__).parent.parent.parent.parent
+_FFMPEG_EXE = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
+_FFPROBE_EXE = "ffprobe.exe" if platform.system() == "Windows" else "ffprobe"
+FFMPEG_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFMPEG_EXE)
+FFPROBE_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFPROBE_EXE)
 
 # Windows 平台静默创建进程的标志
 CREATE_NO_WINDOW = subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
@@ -105,7 +113,7 @@ async def async_run_ffprobe(
         解析后的 JSON 数据字典
     """
     cmd = [
-        "ffprobe", "-v", "error",
+        FFPROBE_PATH, "-v", "error",
         "-show_entries", entries,
         "-of", output_format,
         video_path

@@ -41,10 +41,10 @@ class FaceEnhancer:
 
         try:
             self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-            print("✅ 人脸检测器加载成功")
+            print("[OK] 人脸检测器加载成功")
         except:
             self.face_cascade = None
-            print("⚠️ 人脸检测器加载失败，将使用整图模式")
+            print("[!] 人脸检测器加载失败，将使用整图模式")
 
     def detect_face(self, img):
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -68,7 +68,7 @@ class FaceEnhancer:
             face_bbox = self.detect_face(img)
         
         if face_bbox is None:
-            print("   ⚠️ 未检测到人脸，返回原图")
+            print("   [!] 未检测到人脸，返回原图")
             return img.copy()
 
         x, y, w, h = face_bbox
@@ -159,7 +159,7 @@ def main():
     out = cv2.VideoWriter(output_video, fourcc, fps, (width, height))
 
     print(f"\n开始处理视频...")
-    print(f"✨ 使用智能人脸增强模式 (只增强人脸，背景保持原样)")
+    print(f"[*] 使用智能人脸增强模式 (只增强人脸，背景保持原样)")
     
     start_time = time.time() if 'time' in dir() else __import__('time').time()
 
@@ -189,7 +189,7 @@ def main():
     avg_speed = frame_idx / total_time if total_time > 0 else 0
 
     print(f"\n{'='*70}")
-    print("✅ 视频处理完成!")
+    print("[OK] 视频处理完成!")
     print(f"  处理帧数: {frame_idx}")
     print(f"  总耗时: {total_time:.2f} 秒")
     print(f"  平均速度: {avg_speed:.2f} FPS")

@@ -161,7 +161,7 @@
             </el-form-item>
 
             <!-- 画外音视频 -->
-            <el-form-item v-if="taskForm.videoParams.enablePip" label="画外音视频">
+            <el-form-item label="画外音视频">
               <div class="video-upload-section">
                 <!-- 单人模式 -->
                 <template v-if="!taskForm.videoParams.dualMode">
@@ -201,6 +201,9 @@
                           <div class="video-info">
                             <el-icon><VideoCamera /></el-icon>
                             <span class="video-name" :title="taskForm.pipLeftVideo.name">{{ taskForm.pipLeftVideo.name }}</span>
+                            <div class="video-preview">
+                              <video :src="'/api/files/' + taskForm.pipLeftVideo.path + (taskForm.pipLeftVideo.timestamp ? '?t=' + taskForm.pipLeftVideo.timestamp : '')" controls class="preview-video"></video>
+                            </div>
                           </div>
                           <div class="video-actions">
                             <el-button type="warning" link @click="openClipDialog('pipLeft', taskForm.pipLeftVideo, 'video')">
@@ -225,6 +228,9 @@
                           <div class="video-info">
                             <el-icon><VideoCamera /></el-icon>
                             <span class="video-name" :title="taskForm.pipRightVideo.name">{{ taskForm.pipRightVideo.name }}</span>
+                            <div class="video-preview">
+                              <video :src="'/api/files/' + taskForm.pipRightVideo.path + (taskForm.pipRightVideo.timestamp ? '?t=' + taskForm.pipRightVideo.timestamp : '')" controls class="preview-video"></video>
+                            </div>
                           </div>
                           <div class="video-actions">
                             <el-button type="warning" link @click="openClipDialog('pipRight', taskForm.pipRightVideo, 'video')">

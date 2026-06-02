@@ -1,4 +1,4 @@
-name: D:\ai\aUTOavantar\py310
+name: D:\ai\aUTOavantar\runtime
 channels:
   - conda-forge
   - defaults
@@ -421,4 +421,4 @@ dependencies:
       - yapf==0.43.0
       - yarl==1.20.1
       - zipp==3.20.2
-prefix: D:\ai\aUTOavantar\py310
+prefix: D:\ai\aUTOavantar\runtime

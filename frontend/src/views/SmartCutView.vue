@@ -281,34 +281,38 @@
             <span>{{ formatDuration(seg.start_time) }} - {{ formatDuration(seg.end_time) }}</span>
           </div>
           <div class="segment-actions">
-            <el-button
-              type="warning"
-              size="default"
-              @click="openClipDialog(seg.video_path, 'video', 'segment')"
-            >
-              剪辑片段
-            </el-button>
-            <el-button
-              type="success"
-              size="default"
-              @click="extractAudio(seg)"
-            >
-              提取音频
-            </el-button>
-            <el-button
-              type="primary"
-              size="default"
-              @click="addToPending(seg)"
-            >
-              加入列表
-            </el-button>
-            <el-button
-              type="danger"
-              size="default"
-              @click="deleteSegment(seg.segment_id)"
-            >
-              删除
-            </el-button>
+            <div class="action-row">
+              <el-button
+                type="warning"
+                size="default"
+                @click="openClipDialog(seg.video_path, 'video', 'segment')"
+              >
+                剪辑片段
+              </el-button>
+              <el-button
+                type="success"
+                size="default"
+                @click="extractAudio(seg)"
+              >
+                提取音频
+              </el-button>
+            </div>
+            <div class="action-row">
+              <el-button
+                type="primary"
+                size="default"
+                @click="addToPending(seg)"
+              >
+                加入列表
+              </el-button>
+              <el-button
+                type="danger"
+                size="default"
+                @click="deleteSegment(seg.segment_id)"
+              >
+                删除
+              </el-button>
+            </div>
           </div>
         </div>
       </div>
@@ -1073,9 +1077,6 @@ const extractAudio = async (seg) => {
 
     if (response.code === 200) {
       ElMessage.success('音频提取成功')
-      // 关闭预览弹窗
-      previewDialogVisible.value = false
-      // 显示音频播放弹窗
       audioInfo.value = {
         audio_path: response.data.audio_path,
         duration: response.data.duration,
@@ -1635,16 +1636,43 @@ onUnmounted(() => {
 
 .segment-actions {
   padding: var(--space-sm) var(--space-md);
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-sm);
+  overflow: hidden;
 }
 
-.segment-actions .el-button {
+.segment-actions .action-row {
+  display: flex;
+  gap: var(--space-sm);
   width: 100%;
-  font-size: var(--font-size-base);
-  padding: 12px 16px;
+}
+
+.segment-actions .action-row:first-child {
+  justify-content: space-between;
+}
+
+.segment-actions .action-row:last-child {
+  justify-content: space-between;
+}
+
+.segment-actions :deep(.el-button) {
+  flex: 1 1 calc(50% - var(--space-sm) / 2);
+  min-width: 0;
+  max-width: none;
+  font-size: var(--font-size-sm);
+  padding: 8px 12px;
   height: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 确保按钮不超出容器 */
+.segment-actions :deep(.el-button span) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .preview-video {
@@ -1740,25 +1768,41 @@ onUnmounted(() => {
   align-self: flex-start;
 }
 
-/* 操作按钮强制并排 */
+/* 操作按钮行 - 左对齐并均匀分布 */
 .action-buttons-row {
   display: flex;
   gap: var(--space-md);
   flex-wrap: nowrap;
+  margin-left: 0;
+  padding-left: 0;
 }
 
 .action-buttons-row :deep(.el-form-item__content) {
   display: flex;
-  gap: var(--space-md);
+  gap: var(--space-sm);
   flex-wrap: nowrap;
   width: 100%;
-  justify-content: space-between;
+  justify-content: flex-start;
+  align-items: center;
 }
 
 .action-buttons-row :deep(.el-button) {
-  flex: 1;
-  min-width: 0;
-  max-width: 160px;
+  flex: 1 1 0;
+  min-width: 80px;
+  max-width: none;
+  white-space: nowrap;
+  padding: 12px 8px;
+  font-size: var(--font-size-base);
+}
+
+/* 第一个按钮左对齐 */
+.action-buttons-row :deep(.el-button:first-child) {
+  margin-left: 0;
+}
+
+/* 最后一个按钮左移效果通过负margin实现 */
+.action-buttons-row :deep(.el-button:last-child) {
+  margin-right: -50px;
 }
 
 /* 音频弹窗 */

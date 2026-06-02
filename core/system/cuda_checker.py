@@ -99,6 +99,7 @@ class CUDAChecker:
                 logger.info(f"CUDA 缓存已过期 ({age_days:.1f} 天)")
                 return None
 
+            data.pop('cached', None)
             result = CUDACheckResult(**data, cached=True)
             logger.info(f"使用缓存的 CUDA 检测结果 ({age_days:.1f} 天前)")
             return result

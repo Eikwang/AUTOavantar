@@ -5,10 +5,18 @@
 
 import logging
 import os
+import platform
+from pathlib import Path as _Path
 from pathlib import Path
 from typing import Optional
 
 from api.utils.async_subprocess import async_run_subprocess, async_run_ffmpeg, async_run_ffprobe
+
+_PROJECT_ROOT = _Path(__file__).parent.parent.parent
+_FFMPEG_EXE = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
+_FFPROBE_EXE = "ffprobe.exe" if platform.system() == "Windows" else "ffprobe"
+FFMPEG_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFMPEG_EXE)
+FFPROBE_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFPROBE_EXE)
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +106,7 @@ class AudioSpeedProcessor:
             # 使用 rubberband 滤镜进行语速调节
             # tempo 参数：>1 加快，<1 减慢
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-i", audio_path,
                 "-af", f"rubberband=tempo={speed}",
                 "-c:a", "libmp3lame",
@@ -183,7 +191,7 @@ class AudioSpeedProcessor:
             # atempo 滤镜范围是 0.5-2.0
             # 对于 0.8-1.2 的范围，可以直接使用
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-i", audio_path,
                 "-af", f"atempo={speed}",
                 "-c:a", "libmp3lame",

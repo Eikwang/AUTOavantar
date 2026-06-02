@@ -5,9 +5,11 @@
 
 import logging
 import os
+import platform
 import random
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
+from pathlib import Path as _Path
 
 from api.utils.async_subprocess import async_run_subprocess, async_run_ffmpeg, async_run_ffprobe
 
@@ -18,6 +20,13 @@ from business.postprocess.transition_effects import (
     ALL_TRANSITION_EFFECTS,
     is_valid_transition_effect
 )
+
+# ffmpeg/ffprobe 绝对路径（跨平台兼容）
+_PROJECT_ROOT = _Path(__file__).parent.parent.parent
+_FFMPEG_EXE = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
+_FFPROBE_EXE = "ffprobe.exe" if platform.system() == "Windows" else "ffprobe"
+FFMPEG_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFMPEG_EXE)
+FFPROBE_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFPROBE_EXE)
 
 logger = logging.getLogger(__name__)
 
@@ -157,10 +166,15 @@ class PostProcessor:
 
                 # 根据配置选择合并方式
                 logger.info(f"检查转场配置: enable_transition={config.enable_transition}, video_count={len(video_paths)}")
+                success = False
                 if config.enable_transition:
                     # 使用转场效果合并
                     logger.info("启用转场效果，使用 xfade 滤镜合并")
                     success = await self._concat_videos_with_transition(video_paths, intermediate_output_path, config)
+                    if not success:
+                        # 转场合并失败，回退到普通合并
+                        logger.warning("转场合并失败，回退到普通合并")
+                        success = await self._concat_videos(video_paths, intermediate_output_path)
                 else:
                     # 使用普通合并
                     success = await self._concat_videos(video_paths, intermediate_output_path)
@@ -278,7 +292,7 @@ class PostProcessor:
 
         try:
             cmd = [
-                'ffprobe',
+                FFPROBE_PATH,
                 '-v', 'quiet',
                 '-print_format', 'json',
                 '-show_format',
@@ -308,6 +322,23 @@ class PostProcessor:
                 'bit_rate': data.get('format', {}).get('bit_rate'),
                 'codec_name': video_stream.get('codec_name')
             }
+
+            # 处理 SAR（Sample Aspect Ratio）：计算真实显示分辨率
+            # SAR 定义：display_width = pixel_width * SAR_num / SAR_den，高度不变
+            # 例如 2560x2498 [SAR 4096:4095] 的显示宽度 = 2560 * 4096/4095 ≈ 2560.6
+            sar_str = video_stream.get('sample_aspect_ratio', '1:1')
+            try:
+                sar_num, sar_den = map(int, sar_str.split('/'))
+                if sar_den > 0 and (sar_num != sar_den):
+                    display_width = round(metadata['width'] * sar_num / sar_den)
+                    logger.debug(f"视频 SAR={sar_str}, 像素尺寸={metadata['width']}x{metadata['height']}, 显示尺寸={display_width}x{metadata['height']}")
+                    # 使用显示尺寸作为 width，确保后续比较和缩放基于显示尺寸
+                    metadata['pixel_width'] = metadata['width']
+                    metadata['pixel_height'] = metadata['height']
+                    metadata['width'] = display_width
+                    metadata['sar'] = sar_str
+            except (ValueError, ZeroDivisionError):
+                pass
 
             # 添加音频参数（如果存在音频流）
             if audio_stream:
@@ -350,7 +381,7 @@ class PostProcessor:
             meta = await self._get_video_metadata(video_path)
             if not meta:
                 logger.warning(f"无法获取视频信息，使用默认拉伸缩放: {video_path}")
-                scale_filter = f"scale={target_width}:{target_height},fps={target_fps}"
+                scale_filter = f"scale={target_width}:{target_height},setsar=1:1,fps={target_fps}"
             else:
                 src_width = meta.get('width', 0)
                 src_height = meta.get('height', 0)
@@ -364,22 +395,26 @@ class PostProcessor:
                     logger.info(f"视频尺寸已一致 {src_width}x{src_height}，仅统一帧率")
                 elif ratio_error <= error_threshold:
                     # 比例误差小，拉伸缩放
-                    scale_filter = f"scale={target_width}:{target_height},fps={target_fps}"
+                    scale_filter = f"scale={target_width}:{target_height},setsar=1:1,fps={target_fps}"
                     logger.info(f"视频 {src_width}x{src_height} 比例误差 {ratio_error:.2f}% <= {error_threshold}%，拉伸缩放到 {target_width}x{target_height}")
                 else:
                     # 比例误差大，填充缩放：等比缩放 + 模糊背景填充
+                    # force_original_aspect_ratio 缩放后像素尺寸可能不等于目标尺寸，
+                    # 需要在 overlay 后强制裁剪到精确目标尺寸并设置 SAR=1:1
                     scale_filter = (
                         f"split[original][bg];"
                         f"[bg]scale={target_width}:{target_height}:force_original_aspect_ratio=increase,"
+                        f"crop={target_width}:{target_height},"
                         f"boxblur=50:5,format=yuv420p[blurred_bg];"
                         f"[original]scale={target_width}:{target_height}:force_original_aspect_ratio=decrease,"
                         f"format=yuv420p[fg];"
-                        f"[blurred_bg][fg]overlay=(W-w)/2:(H-h)/2,fps={target_fps}"
+                        f"[blurred_bg][fg]overlay=(W-w)/2:(H-h)/2,"
+                        f"crop={target_width}:{target_height},setsar=1:1,fps={target_fps}"
                     )
                     logger.info(f"视频 {src_width}x{src_height} 比例误差 {ratio_error:.2f}% > {error_threshold}%，填充缩放到 {target_width}x{target_height}")
 
             cmd = [
-                'ffmpeg',
+                FFMPEG_PATH,
                 '-i', video_path,
                 '-vf', scale_filter,
                 '-c:v', 'libx264',
@@ -436,11 +471,14 @@ class PostProcessor:
                     logger.error("无法获取任何视频的元数据")
                     return False
 
-                target_width = max(m['width'] for m in all_metadata)
-                target_height = max(m['height'] for m in all_metadata)
+                # 选择面积最大（像素数最多）的视频作为基准，使用其完整分辨率
+                # 不能分别对 width 和 height 取 max，否则横屏+竖屏混合会得到正方形等荒谬比例
+                base_meta = max(all_metadata, key=lambda m: m.get('width', 0) * m.get('height', 0))
+                target_width = base_meta['width']
+                target_height = base_meta['height']
                 target_fps = max(m.get('fps', 30.0) for m in all_metadata)
 
-                logger.info(f"统一视频参数: 分辨率 {target_width}x{target_height}, 帧率 {target_fps}fps")
+                logger.info(f"统一视频参数: 基准视频 {target_width}x{target_height}（面积最大）, 帧率 {target_fps}fps")
 
                 normalized_paths = []
                 for i, video_path in enumerate(video_paths):
@@ -466,7 +504,7 @@ class PostProcessor:
                         f.write(f"file '{os.path.abspath(path)}'\n")
 
                 cmd = [
-                    "ffmpeg", "-f", "concat", "-safe", "0",
+                    FFMPEG_PATH, "-f", "concat", "-safe", "0",
                     "-i", list_file, "-c", "copy", output_path
                 ]
 
@@ -529,11 +567,14 @@ class PostProcessor:
                     logger.error("无法获取任何视频的元数据")
                     return False
 
-                target_width = max(m['width'] for m in all_metadata)
-                target_height = max(m['height'] for m in all_metadata)
+                # 选择面积最大（像素数最多）的视频作为基准，使用其完整分辨率
+                # 不能分别对 width 和 height 取 max，否则横屏+竖屏混合会得到正方形等荒谬比例
+                base_meta = max(all_metadata, key=lambda m: m.get('width', 0) * m.get('height', 0))
+                target_width = base_meta['width']
+                target_height = base_meta['height']
                 target_fps = max(m.get('fps', 30.0) for m in all_metadata)
 
-                logger.info(f"统一视频参数: 分辨率 {target_width}x{target_height}, 帧率 {target_fps}fps")
+                logger.info(f"转场合并统一视频参数: 基准视频 {target_width}x{target_height}（面积最大）, 帧率 {target_fps}fps")
 
                 # 2. 标准化所有视频
                 normalized_paths = []
@@ -615,7 +656,7 @@ class PostProcessor:
 
                 # 5. 执行 FFmpeg 命令
                 cmd = [
-                    "ffmpeg"
+                    FFMPEG_PATH
                 ]
 
                 # 添加输入文件
@@ -1015,7 +1056,7 @@ class PostProcessor:
 
             # 构建 ffmpeg 命令列表
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-i", video_path,
                 "-vf", subtitle_filter,
                 "-c:v", "libx264",
@@ -1164,7 +1205,7 @@ class PostProcessor:
                 logger.info(f"BGM 需要循环 {loop_count} 次以覆盖视频时长")
 
                 cmd = [
-                    "ffmpeg",
+                    FFMPEG_PATH,
                     "-i", video_path,
                     "-stream_loop", str(loop_count),
                     "-i", bgm_path,
@@ -1182,7 +1223,7 @@ class PostProcessor:
                 logger.info(f"BGM 时长足够，截取前 {video_duration}s")
 
                 cmd = [
-                    "ffmpeg",
+                    FFMPEG_PATH,
                     "-i", video_path,
                     "-i", bgm_path,
                     "-filter_complex",
@@ -1227,7 +1268,7 @@ class PostProcessor:
         """获取媒体文件时长"""
         try:
             cmd = [
-                'ffprobe', '-v', 'error',
+                FFPROBE_PATH, '-v', 'error',
                 '-show_entries', 'format=duration',
                 '-of', 'default=noprint_wrappers=1:nokey=1',
                 media_path
@@ -1261,7 +1302,7 @@ class PostProcessor:
 
             reference_path = video_path.replace(".mp4", "_reference.jpg")
             cmd = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-i", opening_video,
                 "-ss", "00:00:01",
                 "-vframes", "1",
@@ -1413,7 +1454,7 @@ class PostProcessor:
 
             # 步骤1: 将封面图片转换为短视频（含静音音频轨道，确保 concat 时流结构一致）
             cmd_cover = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-loop", "1",
                 "-i", cover_path,
                 "-f", "lavfi", "-i", f"anullsrc=channel_layout={channel_layout}:sample_rate={audio_sample_rate}",
@@ -1445,7 +1486,7 @@ class PostProcessor:
                 f.write(f"file '{video_path}'\n")
 
             cmd_concat = [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-f", "concat",
                 "-safe", "0",
                 "-i", concat_list_path,

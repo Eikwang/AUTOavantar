@@ -8,9 +8,17 @@ import logging
 import subprocess
 import json
 import sys
-from pathlib import Path
+import platform
+from pathlib import Path as _Path, Path
 from typing import Optional, Dict, Any
 from datetime import datetime
+
+# FFmpeg/FFprobe 绝对路径常量
+_PROJECT_ROOT = _Path(__file__).parent.parent.parent.parent
+_FFMPEG_EXE = "ffmpeg.exe" if platform.system() == "Windows" else "ffmpeg"
+_FFPROBE_EXE = "ffprobe.exe" if platform.system() == "Windows" else "ffprobe"
+FFMPEG_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFMPEG_EXE)
+FFPROBE_PATH = str(_PROJECT_ROOT / "runtime" / "ffmpeg" / "bin" / _FFPROBE_EXE)
 
 logger = logging.getLogger("autoavantar-api.media_clip")
 
@@ -76,7 +84,7 @@ class MediaClipService:
 
         # 使用 ffprobe 获取视频信息
         cmd = [
-            "ffprobe",
+            FFPROBE_PATH,
             "-v", "quiet",
             "-print_format", "json",
             "-show_format",
@@ -136,7 +144,7 @@ class MediaClipService:
 
         # 使用 ffprobe 获取音频信息
         cmd = [
-            "ffprobe",
+            FFPROBE_PATH,
             "-v", "quiet",
             "-print_format", "json",
             "-show_format",
@@ -212,7 +220,7 @@ class MediaClipService:
         # -ss 放在 -i 之前用于快速定位，-t 指定输出时长
         clip_duration = end_time - start_time
         cmd = [
-            "ffmpeg",
+            FFMPEG_PATH,
             "-y",
             "-ss", str(start_time),
             "-i", str(full_path),
@@ -298,7 +306,7 @@ class MediaClipService:
         clip_duration = end_time - start_time
 
         cmd = [
-            "ffmpeg",
+            FFMPEG_PATH,
             "-y",
             "-ss", str(start_time),
             "-i", str(full_path),
@@ -402,7 +410,7 @@ class MediaClipService:
 
         # 构建 FFmpeg 命令 — 画面裁剪需要重新编码视频流
         cmd = [
-            "ffmpeg",
+            FFMPEG_PATH,
             "-y",
             "-i", str(full_path),
             "-vf", f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y}",
@@ -470,7 +478,7 @@ class MediaClipService:
         # 使用 ffmpeg 获取音频数据并计算波形
         # 先获取音频的 PCM 数据
         cmd = [
-            "ffmpeg",
+            FFMPEG_PATH,
             "-i", str(full_path),
             "-f", "f32le",
             "-acodec", "pcm_f32le",
