@@ -459,47 +459,117 @@ class VideoSynthesizer:
                     is_scene_tag = tag_matcher.is_scene_tag(tone)
                     
                     if is_scene_tag and is_scene_matched:
-                        # 场景标签匹配成功：直接合并视频和音频，不调用 HeyGem
-                        logger.info(f"标签 '{tone}' 场景视频匹配成功，直接合并视频和音频")
-                        
-                        # 合并左、右音频
-                        scene_combined_audio = None
-                        audio_list = []
-                        if left_audio:
-                            audio_list.append(left_audio)
-                        if right_audio:
-                            audio_list.append(right_audio)
-                        
-                        if audio_list:
-                            scene_combined_audio = os.path.join(self.output_dir, f"scene_combined_{tone}_{task.task_id}.wav")
-                            if len(audio_list) == 1:
-                                scene_combined_audio = audio_list[0]
+                        # 场景标签匹配成功
+                        logger.info(f"标签 '{tone}' 场景视频匹配成功")
+
+                        # 检查是否启用画外音
+                        enable_pip = getattr(task, 'enable_pip', False)
+                        pip_left_video = getattr(task, 'pip_left_video_path', None)
+                        pip_right_video = getattr(task, 'pip_right_video_path', None)
+
+                        if enable_pip and (pip_left_video or pip_right_video):
+                            # 场景标签 + 画外音：左/右说话人分别独立推理，分别叠加到场景
+                            logger.info(f"标签 '{tone}' 启用画外音，开始 HeyGem 合成流程")
+
+                            # 标准化 PIP 视频路径
+                            pip_left_abs = pip_left_video
+                            if pip_left_abs and not os.path.isabs(pip_left_abs):
+                                pip_left_abs = os.path.abspath(pip_left_abs)
+                            pip_right_abs = pip_right_video
+                            if pip_right_abs and not os.path.isabs(pip_right_abs):
+                                pip_right_abs = os.path.abspath(pip_right_abs)
+
+                            # 确定各说话人的 PIP 视频源
+                            left_pip_source = pip_left_abs
+                            right_pip_source = pip_right_abs if pip_right_abs else pip_left_abs
+
+                            # 检查 PIP 视频源是否存在
+                            left_pip_exists = left_pip_source and os.path.exists(left_pip_source)
+                            right_pip_exists = right_pip_source and os.path.exists(right_pip_source)
+
+                            if left_pip_exists or right_pip_exists:
+                                # 左说话人独立推理
+                                left_result = None
+                                if left_audio and os.path.exists(left_audio) and left_pip_exists:
+                                    logger.info(f"标签 '{tone}' 画外音左说话人 HeyGem 推理，视频源: {left_pip_source}, face_id=0")
+                                    left_result = self._run_heygem_inference(
+                                        left_audio, left_pip_source, config, face_id=0,
+                                        cancel_callback=cancel_callback,
+                                        output_filename=f"{task.task_id}_speaker_left_{tone}.mp4"
+                                    )
+                                    if cancel_callback and cancel_callback():
+                                        logger.info(f"标签 '{tone}' 左说话人推理后检测到任务已取消")
+                                        break
+                                    if left_result and os.path.exists(left_result) and left_result != left_pip_source:
+                                        all_intermediate_files.append(left_result)
+                                    else:
+                                        logger.warning(f"标签 '{tone}' 画外音左说话人推理失败")
+
+                                # 右说话人独立推理
+                                right_result = None
+                                if right_audio and os.path.exists(right_audio) and right_pip_exists:
+                                    logger.info(f"标签 '{tone}' 画外音右说话人 HeyGem 推理，视频源: {right_pip_source}, face_id=1")
+                                    right_result = self._run_heygem_inference(
+                                        right_audio, right_pip_source, config, face_id=1,
+                                        cancel_callback=cancel_callback,
+                                        output_filename=f"{task.task_id}_speaker_right_{tone}.mp4"
+                                    )
+                                    if cancel_callback and cancel_callback():
+                                        logger.info(f"标签 '{tone}' 右说话人推理后检测到任务已取消")
+                                        break
+                                    if right_result and os.path.exists(right_result) and right_result != right_pip_source:
+                                        all_intermediate_files.append(right_result)
+                                    else:
+                                        logger.warning(f"标签 '{tone}' 画外音右说话人推理失败")
+
+                                pip_success = False
+
+                                # 不立即叠加到场景，而是保存路径供后期处理
+                                # 流程改为：生成音频→生成视频→视频标准化→叠加头像
+                                if not hasattr(task, 'scene_pip_processed'):
+                                    task.scene_pip_processed = set()
+                                task.scene_pip_processed.add(tone)
+
+                                # 根据推理结果决定待叠加的说话人
+                                if left_result and right_result and os.path.exists(left_result) and os.path.exists(right_result):
+                                    # 左右说话人都有：保存两个说话人视频路径
+                                    task.scene_pip_left_video = left_result
+                                    task.scene_pip_right_video = right_result
+                                    # 为当前 tone 保存场景视频路径（使用 task 级别的属性）
+                                    setattr(task, f'scene_pip_scene_{tone}', matched_video)
+                                    tone_video_paths.append(matched_video)
+                                    task.completed_tone_videos[tone] = matched_video
+                                    logger.info(f"标签 '{tone}' 双人画外音：保存说话人路径，待标准化后叠加")
+                                    pip_success = True
+                                elif left_result and os.path.exists(left_result):
+                                    # 只有左说话人：保存左说话人视频路径
+                                    task.scene_pip_left_video = left_result
+                                    setattr(task, f'scene_pip_scene_{tone}', matched_video)
+                                    tone_video_paths.append(matched_video)
+                                    task.completed_tone_videos[tone] = matched_video
+                                    logger.info(f"标签 '{tone}' 左说话人画外音：保存说话人路径，待标准化后叠加")
+                                    pip_success = True
+                                elif right_result and os.path.exists(right_result):
+                                    # 只有右说话人：保存右说话人视频路径
+                                    task.scene_pip_right_video = right_result
+                                    setattr(task, f'scene_pip_scene_{tone}', matched_video)
+                                    tone_video_paths.append(matched_video)
+                                    task.completed_tone_videos[tone] = matched_video
+                                    logger.info(f"标签 '{tone}' 右说话人画外音：保存说话人路径，待标准化后叠加")
+                                    pip_success = True
+
+                                if not pip_success:
+                                    # 回退：合并左右音频到场景视频
+                                    logger.warning(f"标签 '{tone}' 画外音处理失败，回退到无画外音模式")
+                                    await self._fallback_scene_audio_merge(tone, matched_video, left_audio, right_audio, task, tone_video_paths, all_intermediate_files)
                             else:
-                                if not await self._concat_audio_files(audio_list, scene_combined_audio):
-                                    scene_combined_audio = None
-                                else:
-                                    # 记录中间文件
-                                    all_intermediate_files.append(scene_combined_audio)
-                        
-                        if scene_combined_audio:
-                            # 获取音频时长
-                            audio_duration = await self._get_audio_duration(scene_combined_audio)
-                            if audio_duration > 0:
-                                # 输出文件名
-                                scene_output_path = os.path.join(self.output_dir, f"scene_{tone}_{task.task_id}.mp4")
-                                
-                                # 使用 ffmpeg 处理：替换音频，并调整视频长度
-                                success = await self._replace_audio_in_video(matched_video, scene_combined_audio, scene_output_path, audio_duration)
-                                
-                                if success and os.path.exists(scene_output_path):
-                                    tone_video_paths.append(scene_output_path)
-                                    # 记录已完成的标签视频
-                                    task.completed_tone_videos[tone] = scene_output_path
-                                    # 记录中间文件（如果不是最终输出）
-                                    all_intermediate_files.append(scene_output_path)
-                                    logger.info(f"标签 '{tone}' 场景视频生成完成: {scene_output_path}")
-                                else:
-                                    logger.error(f"标签 '{tone}' 场景视频生成失败")
+                                # 画外音视频素材不存在，回退到无画外音模式
+                                logger.warning(f"标签 '{tone}' 画外音视频素材不存在，回退到无画外音模式")
+                                await self._fallback_scene_audio_merge(tone, matched_video, left_audio, right_audio, task, tone_video_paths, all_intermediate_files)
+                        else:
+                            # 无画外音：直接合并音频到场景视频
+                            logger.info(f"标签 '{tone}' 无画外音，直接合并音频到场景视频")
+                            await self._fallback_scene_audio_merge(tone, matched_video, left_audio, right_audio, task, tone_video_paths, all_intermediate_files)
                     else:
                         # 非场景标签：调用 HeyGem 合成，先左后右
                         current_source = matched_video
@@ -696,10 +766,73 @@ class VideoSynthesizer:
                     # 检查是否是场景标签且匹配成功
                     tone = getattr(segment, 'tone', '')
                     if tag_matcher.is_scene_tag(tone) and is_scene_matched and video_source:
-                        # 场景视频匹配成功：不需要调用 HeyGem 合成，直接使用匹配到的视频，然后合并音频
-                        logger.info(f"段落 {segment.segment_id} 场景标签 '{tone}' 匹配成功，跳过 HeyGem 合成，直接使用匹配视频: {video_source}")
-                        result = await self._process_scene_video(segment, video_source, task_id=task.task_id)
-                        results.append(result)
+                        # 场景视频匹配成功
+                        logger.info(f"段落 {segment.segment_id} 场景标签 '{tone}' 匹配成功: {video_source}")
+
+                        # 检查是否启用画外音
+                        enable_pip = getattr(task, 'enable_pip', False)
+                        pip_video = getattr(task, 'pip_video_path', None)
+
+                        if enable_pip and pip_video:
+                            # 场景标签 + 画外音：调用 HeyGem 合成说话人视频，叠加到场景素材
+                            logger.info(f"段落 {segment.segment_id} 启用画外音，开始 HeyGem 合成流程")
+
+                            if not os.path.isabs(pip_video):
+                                pip_video = os.path.abspath(pip_video)
+
+                            pip_success = False
+                            if os.path.exists(pip_video):
+                                # 调用 HeyGem 合成说话人视频
+                                speaker_video = self._run_heygem_inference(
+                                    segment.audio_path,
+                                    pip_video,
+                                    config,
+                                    face_id=0,
+                                    cancel_callback=cancel_callback,
+                                    output_filename=f"{task.task_id}_speaker_{segment.segment_id}.mp4"
+                                )
+
+                                if speaker_video and os.path.exists(speaker_video):
+                                    # 不立即叠加到场景，而是保存路径供后期处理
+                                    # 流程改为：生成音频→生成视频→视频标准化→叠加头像
+                                    if not hasattr(task, 'scene_pip_processed'):
+                                        task.scene_pip_processed = set()
+                                    task.scene_pip_processed.add(tone)
+
+                                    # 保存说话人视频路径，供后期标准化后叠加使用
+                                    segment.pending_speaker_video = speaker_video
+                                    segment.scene_video_path = video_source
+                                    # 设置待叠加标志
+                                    segment.need_pip_overlay = True
+
+                                    # 输出路径设置为场景视频路径（后期处理时先标准化再叠加）
+                                    segment.output_path = video_source
+                                    segment.video_path = video_source
+
+                                    result = VideoSegmentResult(
+                                        segment_id=segment.segment_id,
+                                        audio_path=segment.audio_path,
+                                        video_path=video_source,
+                                        duration=segment.duration or 0.0,
+                                        status="success"
+                                    )
+                                    results.append(result)
+                                    logger.info(f"段落 {segment.segment_id} 说话人视频生成完成，待标准化后叠加: speaker={speaker_video}, scene={video_source}")
+                                    pip_success = True
+                                else:
+                                    logger.warning(f"段落 {segment.segment_id} HeyGem 合成失败")
+                            else:
+                                logger.warning(f"画外音视频素材不存在: {pip_video}")
+
+                            if not pip_success:
+                                # 回退：直接合并音频到场景视频
+                                logger.warning(f"段落 {segment.segment_id} 画外音处理失败，回退到无画外音模式")
+                                result = await self._process_scene_video(segment, video_source, task_id=task.task_id)
+                                results.append(result)
+                        else:
+                            # 无画外音：直接合并音频到场景视频
+                            result = await self._process_scene_video(segment, video_source, task_id=task.task_id)
+                            results.append(result)
                     else:
                         # 非场景视频或场景视频匹配失败：正常调用 HeyGem 合成
                         if tag_matcher.is_scene_tag(tone) and not is_scene_matched:
@@ -1134,7 +1267,8 @@ class VideoSynthesizer:
         config: TaskConfig,
         face_id: int = -1,
         cancel_callback=None,
-        output_filename: str = None
+        output_filename: str = None,
+        chaofen: int = -1
     ) -> Optional[str]:
         """
         使用 HeyGemEngine 进行视频推理（双人模式专用）
@@ -1146,17 +1280,24 @@ class VideoSynthesizer:
             face_id: 驱动人脸序号，0=第一张，1=第二张，-1=所有脸
             cancel_callback: 取消回调函数
             output_filename: 输出文件名（可选）
+            chaofen: 超分开关 (1=启用, 0=禁用, -1=自动检测，根据人脸区域大小决定)
 
         Returns:
             生成的视频路径，失败返回 None
         """
+        # 自动检测人脸区域决定是否启用超分
+        if chaofen == -1:
+            from business.video.face_size_checker import should_enable_chaofen
+            chaofen = should_enable_chaofen(video_source)
+
         return self._run_heygem_inference_engine(
             audio_path=audio_path,
             video_source=video_source,
             config=config,
             face_id=face_id,
             cancel_callback=cancel_callback,
-            output_filename=output_filename
+            output_filename=output_filename,
+            chaofen=chaofen
         )
 
     def _run_heygem_inference_engine(
@@ -1166,7 +1307,8 @@ class VideoSynthesizer:
         config: TaskConfig,
         face_id: int = -1,
         cancel_callback=None,
-        output_filename: str = None
+        output_filename: str = None,
+        chaofen: int = 0
     ) -> Optional[str]:
         """
         使用 HeyGemEngine 进行视频生成
@@ -1178,6 +1320,7 @@ class VideoSynthesizer:
             face_id: 驱动人脸序号，0=第一张，-1=所有脸
             cancel_callback: 取消回调函数
             output_filename: 输出文件名（可选，如果提供则直接保存到目标路径）
+            chaofen: 超分开关 (0=不启用, 1=启用)
 
         Returns:
             生成的视频路径，失败返回 None
@@ -1221,7 +1364,8 @@ class VideoSynthesizer:
                 output_dir=self.output_dir,
                 face_id=face_id,
                 steps=config.heygem_steps if hasattr(config, 'heygem_steps') else 16,
-                batch_size=actual_batch_size
+                batch_size=actual_batch_size,
+                chaofen=chaofen
             )
 
             if result and os.path.exists(result):
@@ -2373,6 +2517,67 @@ class VideoSynthesizer:
             logger.error(f"视频标准化异常: {e}")
             return False
 
+    async def _fallback_scene_audio_merge(
+        self,
+        tone: str,
+        matched_video: str,
+        left_audio: Optional[str],
+        right_audio: Optional[str],
+        task,
+        tone_video_paths: list,
+        all_intermediate_files: list
+    ) -> bool:
+        """
+        场景标签回退逻辑：合并音频到场景视频
+
+        Args:
+            tone: 标签名
+            matched_video: 匹配的场景视频路径
+            left_audio: 左音频路径
+            right_audio: 右音频路径
+            task: 任务对象
+            tone_video_paths: 标签视频路径列表
+            all_intermediate_files: 中间文件列表
+
+        Returns:
+            是否成功
+        """
+        scene_combined_audio = None
+        audio_list = [a for a in [left_audio, right_audio] if a]
+
+        if audio_list:
+            scene_combined_audio = os.path.join(self.output_dir, f"scene_combined_{tone}_{task.task_id}.wav")
+            if len(audio_list) == 1:
+                scene_combined_audio = audio_list[0]
+            elif await self._concat_audio_files(audio_list, scene_combined_audio):
+                all_intermediate_files.append(scene_combined_audio)
+            else:
+                scene_combined_audio = None
+
+        if scene_combined_audio:
+            audio_duration = await self._get_audio_duration(scene_combined_audio)
+            if audio_duration > 0:
+                scene_output_path = os.path.join(self.output_dir, f"scene_{tone}_{task.task_id}.mp4")
+                success = await self._replace_audio_in_video(matched_video, scene_combined_audio, scene_output_path, audio_duration)
+                if success and os.path.exists(scene_output_path):
+                    tone_video_paths.append(scene_output_path)
+                    task.completed_tone_videos[tone] = scene_output_path
+                    logger.info(f"标签 '{tone}' 场景视频生成完成: {scene_output_path}")
+                    return True
+                else:
+                    logger.error(f"标签 '{tone}' 场景视频生成失败")
+            else:
+                logger.error(f"标签 '{tone}' 音频时长无效")
+        else:
+            logger.error(f"标签 '{tone}' 无可用音频，场景视频生成失败")
+
+        return False
+
+    async def _video_has_audio(self, video_path: str) -> bool:
+        """检查视频是否有音频流"""
+        info = await self._get_video_info(video_path)
+        return info.get('has_audio', False) if info else False
+
     async def merge_pip_video(
         self,
         scene_video_path: str,
@@ -2380,7 +2585,9 @@ class VideoSynthesizer:
         output_path: str,
         position: str = "bottom-left",
         pip_size: float = 0.25,
-        circle_mask: bool = True
+        circle_mask: bool = True,
+        mix_audio: bool = False,
+        remove_scene_audio: bool = False
     ) -> Dict[str, Any]:
         """
         将画外音视频叠加到场景视频指定位置
@@ -2392,6 +2599,8 @@ class VideoSynthesizer:
             position: 位置（bottom-left, bottom-right, top-left, top-right）
             pip_size: 画外音相对场景视频的大小比例（0.0-1.0）
             circle_mask: 是否使用圆形遮罩
+            mix_audio: 是否混合音频
+            remove_scene_audio: 是否移除场景音频（画外音模式下场景背景音不应保留）
 
         Returns:
             {"status": "success"/"failed", "output_path": str}
@@ -2440,32 +2649,101 @@ class VideoSynthesizer:
             logger.info(f"画外音位置: x={pip_x}, y={pip_y}, 尺寸={pip_size_px}x{pip_size_px}")
 
             if circle_mask:
-                # 圆形遮罩方式：先缩放画外音，用 geq 生成圆形 alpha 遮罩
+                # 圆形遮罩方式：缩放PIP视频后，用colorkey去掉黑色背景实现圆形效果
+                # HeyGem说话人视频是面部在黑色背景上，colorkey=0x000000使黑色区域透明
                 pip_filter = (
-                    f"[1:v]scale={pip_size_px}:{pip_size_px},format=yuva420p,"
-                    f"geq='if(gt(abs(X-{pip_size_px}/2)*abs(X-{pip_size_px}/2)+abs(Y-{pip_size_px}/2)*abs(Y-{pip_size_px}/2),"
-                    f"({pip_size_px}/2-5)*({pip_size_px}/2-5)),0,255)':128:128[pip]"
+                    f"[1:v]scale={pip_size_px}:{pip_size_px},format=rgba,"
+                    f"colorkey=0x000000:0.01:0.01[pip]"
                 )
             else:
                 pip_filter = f"[1:v]scale={pip_size_px}:{pip_size_px}[pip]"
 
-            # 使用 overlay 滤镜叠加画外音，保留场景视频音频
-            cmd = [
-                FFMPEG_PATH,
-                "-i", scene_video_path,
-                "-i", pip_video_path,
-                "-filter_complex", f"{pip_filter};[0:v][pip]overlay={pip_x}:{pip_y}[outv]",
-                "-map", "[outv]",
-                "-map", "0:a?",
-                "-c:v", "libx264",
-                "-c:a", "aac",
-                "-preset", "fast",
-                "-crf", "23",
-                "-t", str(scene_duration),
-                output_path
-            ]
+            pip_info = await self._get_video_info(pip_video_path)
+            pip_duration = pip_info.get('duration', 0.0) if pip_info else 0.0
+            pip_has_audio = pip_info.get('has_audio', False) if pip_info else False
+            scene_has_audio = scene_info.get('has_audio', False)
 
-            logger.info(f"执行画外音叠加命令")
+            # 输出时长取场景和PIP的较长值，确保画外音不被截断
+            output_duration = max(scene_duration, pip_duration)
+
+            logger.info(f"音频状态: 场景音频={scene_has_audio}, PIP音频={pip_has_audio}, 移除场景音频={remove_scene_audio}")
+            logger.info(f"时长: 场景={scene_duration}s, PIP={pip_duration}s, 输出={output_duration}s")
+
+            if remove_scene_audio and pip_has_audio:
+                # 画外音模式：移除场景音频，只用PIP音频
+                # 使用 -stream_loop -1 自动循环场景视频，避免 loop+setpts 的 PTS 问题
+                filter_complex = f"{pip_filter};[0:v][pip]overlay={pip_x}:{pip_y}[outv]"
+                cmd = [
+                    FFMPEG_PATH,
+                    "-stream_loop", "-1",
+                    "-i", scene_video_path,
+                    "-i", pip_video_path,
+                    "-filter_complex", filter_complex,
+                    "-map", "[outv]",
+                    "-map", "1:a",
+                    "-c:v", "libx264",
+                    "-c:a", "aac",
+                    "-preset", "fast",
+                    "-crf", "23",
+                    "-t", str(output_duration),
+                    output_path
+                ]
+            elif mix_audio and pip_has_audio and scene_has_audio:
+                # 场景+PIP都有音频：amix混合
+                filter_complex = f"{pip_filter};[0:v][pip]overlay={pip_x}:{pip_y}[outv];[0:a][1:a]amix=inputs=2:duration=first:dropout_transition=2[outa]"
+                cmd = [
+                    FFMPEG_PATH,
+                    "-stream_loop", "-1",
+                    "-i", scene_video_path,
+                    "-i", pip_video_path,
+                    "-filter_complex", filter_complex,
+                    "-map", "[outv]",
+                    "-map", "[outa]",
+                    "-c:v", "libx264",
+                    "-c:a", "aac",
+                    "-preset", "fast",
+                    "-crf", "23",
+                    "-t", str(output_duration),
+                    output_path
+                ]
+            elif mix_audio and pip_has_audio and not scene_has_audio:
+                # PIP有音频但场景无音频：只用PIP音频
+                filter_complex = f"{pip_filter};[0:v][pip]overlay={pip_x}:{pip_y}[outv]"
+                cmd = [
+                    FFMPEG_PATH,
+                    "-stream_loop", "-1",
+                    "-i", scene_video_path,
+                    "-i", pip_video_path,
+                    "-filter_complex", filter_complex,
+                    "-map", "[outv]",
+                    "-map", "1:a",
+                    "-c:v", "libx264",
+                    "-c:a", "aac",
+                    "-preset", "fast",
+                    "-crf", "23",
+                    "-t", str(output_duration),
+                    output_path
+                ]
+            else:
+                # 场景有音频但PIP无音频，或都不用混合：保留场景音频
+                filter_complex = f"{pip_filter};[0:v][pip]overlay={pip_x}:{pip_y}[outv]"
+                cmd = [
+                    FFMPEG_PATH,
+                    "-stream_loop", "-1",
+                    "-i", scene_video_path,
+                    "-i", pip_video_path,
+                    "-filter_complex", filter_complex,
+                    "-map", "[outv]",
+                    "-map", "0:a?",
+                    "-c:v", "libx264",
+                    "-c:a", "aac",
+                    "-preset", "fast",
+                    "-crf", "23",
+                    "-t", str(output_duration),
+                    output_path
+                ]
+
+            logger.info(f"执行画外音叠加命令 (场景音频={scene_has_audio}, PIP音频={pip_has_audio})")
             returncode, stdout, stderr = await async_run_ffmpeg(cmd, timeout=600)
 
             if returncode == 0 and os.path.exists(output_path):
@@ -2478,6 +2756,162 @@ class VideoSynthesizer:
 
         except Exception as e:
             logger.error(f"画外音叠加异常: {e}", exc_info=True)
+            return {"status": "failed", "error": str(e)}
+
+    async def merge_dual_pip_video(
+        self,
+        scene_video_path: str,
+        left_pip_path: str,
+        right_pip_path: str,
+        output_path: str,
+        left_position: str = "bottom-left",
+        right_position: str = "bottom-right",
+        pip_size: float = 0.25,
+        circle_mask: bool = True
+    ) -> Dict[str, Any]:
+        """
+        双人画外音叠加：左说话人先出现，说完后消失，右说话人再出现
+
+        Args:
+            scene_video_path: 场景视频路径
+            left_pip_path: 左说话人画外音视频路径
+            right_pip_path: 右说话人画外音视频路径
+            output_path: 输出路径
+            left_position: 左说话人位置
+            right_position: 右说话人位置
+            pip_size: 画外音相对场景视频的大小比例
+            circle_mask: 是否使用圆形遮罩
+
+        Returns:
+            {"status": "success"/"failed", "output_path": str}
+        """
+        logger.info(f"=== 双人画外音叠加开始 ===")
+        logger.info(f"场景视频: {scene_video_path}")
+        logger.info(f"左说话人: {left_pip_path}")
+        logger.info(f"右说话人: {right_pip_path}")
+
+        try:
+            scene_info = await self._get_video_info(scene_video_path)
+            if not scene_info:
+                raise ValueError("无法获取场景视频信息")
+
+            scene_width = scene_info['width']
+            scene_height = scene_info['height']
+            scene_duration = scene_info['duration']
+            scene_fps = scene_info.get('fps', 30.0)
+
+            left_info = await self._get_video_info(left_pip_path)
+            right_info = await self._get_video_info(right_pip_path)
+
+            left_duration = left_info.get('duration', 0.0) if left_info else 0.0
+            left_has_audio = left_info.get('has_audio', False) if left_info else False
+            right_duration = right_info.get('duration', 0.0) if right_info else 0.0
+            right_has_audio = right_info.get('has_audio', False) if right_info else False
+
+            total_duration = left_duration + right_duration
+            logger.info(f"时长: 场景={scene_duration}s, 左={left_duration}s, 右={right_duration}s, 总={total_duration}s")
+
+            pip_size_px = max(64, int(min(scene_width, scene_height) * pip_size))
+            margin_x = int(scene_width * 0.05)
+            margin_y = int(scene_height * 0.05)
+
+            def calc_position(position):
+                if position == "bottom-left":
+                    return margin_x, scene_height - pip_size_px - margin_y
+                elif position == "bottom-right":
+                    return scene_width - pip_size_px - margin_x, scene_height - pip_size_px - margin_y
+                elif position == "top-left":
+                    return margin_x, margin_y
+                elif position == "top-right":
+                    return scene_width - pip_size_px - margin_x, margin_y
+                else:
+                    return margin_x, scene_height - pip_size_px - margin_y
+
+            left_x, left_y = calc_position(left_position)
+            right_x, right_y = calc_position(right_position)
+
+            if circle_mask:
+                pip_scale_filter = (
+                    f"scale={pip_size_px}:{pip_size_px},format=rgba,"
+                    f"colorkey=0x000000:0.01:0.01"
+                )
+            else:
+                pip_scale_filter = f"scale={pip_size_px}:{pip_size_px}"
+
+            # 场景循环到总时长：使用 -stream_loop 让场景视频自动循环
+            filter_parts = []
+            # 左说话人在 [0, left_duration) 显示，右说话人在 [left_duration, total_duration) 显示
+            # left_pip 用 enable 控制在 left_duration 后隐藏
+            # right_pip 用 setpts 延迟 PTS，使其在主时间线 left_duration 处才开始显示
+            left_enable = f"enable='between(t\\,0\\,{left_duration})'"
+
+            filter_parts.append(f"[1:v]{pip_scale_filter}[left_pip];")
+            # right_pip: scale/colorkey + setpts 延迟，使 PIP 在主时间线 left_duration 处才开始
+            filter_parts.append(f"[2:v]{pip_scale_filter},setpts=PTS+{left_duration}/TB[right_pip];")
+
+            filter_parts.append(
+                f"[0:v][left_pip]overlay={left_x}:{left_y}:{left_enable}[with_left];"
+            )
+            # right_pip overlay 不需要 enable，因为 setpts 延迟使其自然在 left_duration 后才出现
+            filter_parts.append(
+                f"[with_left][right_pip]overlay={right_x}:{right_y}[outv]"
+            )
+
+            # 音频处理：左说话人音频 + 右说话人音频串接
+            audio_parts = []
+            if left_has_audio and right_has_audio:
+                left_delay_ms = 0
+                right_delay_ms = int(left_duration * 1000)
+                audio_parts.append(
+                    f"[1:a]adelay={left_delay_ms}|{left_delay_ms}[left_a];"
+                )
+                audio_parts.append(
+                    f"[2:a]adelay={right_delay_ms}|{right_delay_ms}[right_a];"
+                )
+                audio_parts.append(
+                    f"[left_a][right_a]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[outa]"
+                )
+            elif left_has_audio:
+                audio_parts.append("[1:a]acopy[outa]")
+            elif right_has_audio:
+                right_delay_ms = int(left_duration * 1000)
+                audio_parts.append(f"[2:a]adelay={right_delay_ms}|{right_delay_ms}[outa]")
+
+            filter_complex = "".join(filter_parts)
+            if audio_parts:
+                filter_complex += ";" + "".join(audio_parts)
+
+            cmd = [
+                FFMPEG_PATH,
+                "-stream_loop", "-1", "-i", scene_video_path,
+                "-i", left_pip_path,
+                "-i", right_pip_path,
+                "-filter_complex", filter_complex,
+                "-map", "[outv]",
+            ]
+            if audio_parts:
+                cmd.extend(["-map", "[outa]", "-c:a", "aac"])
+            cmd.extend([
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                "-t", str(total_duration),
+                output_path
+            ])
+
+            logger.info(f"执行双人画外音叠加命令 (左={left_duration}s, 右={right_duration}s)")
+            returncode, stdout, stderr = await async_run_ffmpeg(cmd, timeout=600)
+
+            if returncode == 0 and os.path.exists(output_path):
+                logger.info(f"双人画外音叠加成功: {output_path}")
+                return {"status": "success", "output_path": output_path}
+            else:
+                stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+                logger.error(f"双人画外音叠加失败: {stderr_text}")
+                return {"status": "failed", "error": stderr_text}
+
+        except Exception as e:
+            logger.error(f"双人画外音叠加异常: {e}", exc_info=True)
             return {"status": "failed", "error": str(e)}
 
     def close(self):

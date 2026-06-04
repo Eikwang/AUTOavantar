@@ -21,13 +21,16 @@ import re
 MAX_CHARS_PER_SUBTITLE = 12
 
 # 中文字符标点符号（用于拆分字幕，但不显示在字幕中）
-# 包含各种引号变体：单引号、双引号、书名号等
-# 使用 Unicode 转义序列避免编码问题
+# 包含所有被 qwen_asr 的 is_kept_char 移除的字符
+# qwen_asr 只保留 Unicode category L(字母)/N(数字) + 单引号，其余全部移除
 CHINESE_PUNCTUATION = (
-    "，。！？；：、,.!?;:）】》\"'」』～~—…"
-    "‘’“”「」『』"  # ''""「」『』
+    "，。！？；：、,.!?;:）】》\"'』〟～~—…"
+    "‘’“”「」『』"
+    "《》〈〉"
+    "（）【】"
+    "·•–"
+    " \t\n\r\u3000"
 )
-
 
 @dataclass
 class SrtEntry:
@@ -130,15 +133,23 @@ def convert_timestamps_to_srt(
         # 因为时间戳是准确的，而 full_text 可能包含音频中不存在的内容
         logger.warning("使用 time_stamps 的字符重建文本，忽略 full_text 中多余的内容")
         # 保留标点符号位置信息，但只使用 time_stamps 中存在的字符
+        # fallback: 如果 full_text 中的非标点字符与 time_stamps_chars 不匹配，
+        # 说明该字符被 qwen_asr 移除但不在 CHINESE_PUNCTUATION 中，跳过它
         rebuilt_text = ""
         time_idx = 0
         for char in full_text:
             if char in CHINESE_PUNCTUATION:
                 rebuilt_text += char
-            elif time_idx < len(time_stamps_chars):
-                # 使用 time_stamps 中的字符（可能与 full_text 不同）
-                rebuilt_text += time_stamps_chars[time_idx]
+            elif time_idx < len(time_stamps_chars) and char == time_stamps_chars[time_idx]:
+                # full_text 字符与 time_stamps_chars 对应位置匹配
+                rebuilt_text += char
                 time_idx += 1
+            elif time_idx < len(time_stamps_chars):
+                # full_text 字符与 time_stamps_chars 不匹配
+                # 说明该字符被 qwen_asr 移除但不在 CHINESE_PUNCTUATION 中
+                # 跳过该字符，不消耗 time_idx
+                logger.debug(f"跳过不可映射字符: '{char}' (期望 '{time_stamps_chars[time_idx]}')")
+                continue
             # 如果 time_stamps 已经用完，跳过 full_text 中剩余的字符
         full_text = rebuilt_text
         logger.info(f"重建后的文本长度: {len(full_text)} 非标点字符: {time_idx}")

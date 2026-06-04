@@ -201,12 +201,26 @@ class PreciseSubtitleGenerator:
         """
         卸载模型释放显存
 
-        调用 torch.cuda.empty_cache() 清理 CUDA 缓存
+        显式断开 Qwen3ForcedAligner 内部引用链，
+        调用 gc.collect() 回收循环引用，再清理 CUDA 缓存
         """
         if self.model is not None:
             logger.info("卸载模型释放显存...")
+
+            # 显式断开 Qwen3ForcedAligner 内部引用链
+            # nn.Module 存在循环引用，需先删除子对象再 del 外层
+            if hasattr(self.model, 'model'):
+                del self.model.model
+            if hasattr(self.model, 'processor'):
+                del self.model.processor
+            if hasattr(self.model, 'aligner_processor'):
+                del self.model.aligner_processor
+
             del self.model
             self.model = None
+
+            import gc
+            gc.collect()
 
             if torch.cuda.is_available():
                 torch.cuda.synchronize()

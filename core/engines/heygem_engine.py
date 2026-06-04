@@ -254,6 +254,7 @@ class HeyGemEngine:
         steps: int = 16,
         batch_size: int = 4,
         ifface: bool = True,
+        chaofen: int = 0,
         **kwargs
     ) -> Tuple[bool, Optional[str]]:
         """
@@ -267,6 +268,7 @@ class HeyGemEngine:
             steps: 推理步数
             batch_size: 推理批次大小（影响队列批处理）
             ifface: 是否使用原始参数模式
+            chaofen: 超分开关 (0=不启用, 1=启用)
             **kwargs: 其他参数
 
         Returns:
@@ -319,7 +321,7 @@ class HeyGemEngine:
                     code=task_code,
                     watermark_switch=0,  # 不添加水印
                     digital_auth=0,       # 无数字授权
-                    chaofen=0,            # 不启用超分
+                    chaofen=chaofen,          # 超分开关 (0=不启用, 1=启用)
                     pn=1,                 # 使用 ping-pong 模式
                     target_face_id=face_id,
                     batch_size=batch_size,  # 推理批次大小

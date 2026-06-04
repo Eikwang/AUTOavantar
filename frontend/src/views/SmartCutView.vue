@@ -1443,6 +1443,9 @@ onUnmounted(() => {
   padding: var(--space-lg);
   max-width: 1400px;
   margin: 0 auto;
+  width: 100%;
+  overflow-x: visible;
+  box-sizing: border-box;
 }
 
 .page-header {
@@ -1491,10 +1494,14 @@ onUnmounted(() => {
 .video-section {
   display: flex;
   gap: var(--space-lg);
+  overflow: visible;
+  width: 100%;
 }
 
 .video-preview {
-  flex: 2;
+  flex: 2 1 500px;
+  min-width: 400px;
+  max-width: 900px;
 }
 
 .video-preview .card-header {
@@ -1532,13 +1539,39 @@ onUnmounted(() => {
 }
 
 .config-panel {
-  flex: 1;
+  flex: 1 1 300px;
+  min-width: 280px;
+  max-width: 450px;
+  overflow: visible;
+}
+
+.config-panel :deep(.el-card__body) {
+  padding: var(--space-lg);
+  overflow: visible;
+}
+
+.config-panel :deep(.el-form) {
+  overflow: visible;
+}
+
+.config-panel :deep(.el-form-item) {
+  margin-bottom: var(--space-md);
+  overflow: visible;
+}
+
+.config-panel :deep(.el-form-item__label) {
+  white-space: nowrap;
+  padding-right: var(--space-sm);
 }
 
 .config-hint {
-  margin-left: var(--space-md);
+  margin-left: var(--space-sm);
   color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: calc(100% - 80px);
 }
 
 .cutting-progress {
@@ -1751,30 +1784,34 @@ onUnmounted(() => {
   gap: var(--space-md);
 }
 
-/* 滑块与输入框上下排列 */
+/* 滑块与输入框上下排列 - 支持动态缩放 */
 .slider-with-input {
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
   width: 100%;
+  overflow: visible;
 }
 
 .slider-with-input .el-slider {
   width: 100%;
+  min-width: 0;
 }
 
 .duration-input {
-  width: 120px;
+  width: 100%;
+  max-width: 150px;
   align-self: flex-start;
 }
 
-/* 操作按钮行 - 左对齐并均匀分布 */
+/* 操作按钮行 - 左对齐并均匀分布，支持动态缩放 */
 .action-buttons-row {
   display: flex;
-  gap: var(--space-md);
+  gap: var(--space-sm);
   flex-wrap: nowrap;
-  margin-left: 0;
+  margin-left: -10px;
   padding-left: 0;
+  width: calc(100% + 10px);
 }
 
 .action-buttons-row :deep(.el-form-item__content) {
@@ -1784,25 +1821,23 @@ onUnmounted(() => {
   width: 100%;
   justify-content: flex-start;
   align-items: center;
+  overflow: visible;
 }
 
 .action-buttons-row :deep(.el-button) {
   flex: 1 1 0;
-  min-width: 80px;
+  min-width: 70px;
   max-width: none;
   white-space: nowrap;
-  padding: 12px 8px;
-  font-size: var(--font-size-base);
+  padding: 10px 6px;
+  font-size: var(--font-size-sm);
+  overflow: visible;
 }
 
-/* 第一个按钮左对齐 */
-.action-buttons-row :deep(.el-button:first-child) {
-  margin-left: 0;
-}
-
-/* 最后一个按钮左移效果通过负margin实现 */
-.action-buttons-row :deep(.el-button:last-child) {
-  margin-right: -50px;
+/* 确保按钮文字不换行 */
+.action-buttons-row :deep(.el-button span) {
+  white-space: nowrap;
+  overflow: visible;
 }
 
 /* 音频弹窗 */
@@ -1963,6 +1998,17 @@ onUnmounted(() => {
 @media (max-width: 992px) {
   .video-section {
     flex-direction: column;
+  }
+
+  .video-preview {
+    max-width: 100%;
+    min-width: auto;
+  }
+
+  .config-panel {
+    max-width: 100%;
+    min-width: auto;
+    width: 100%;
   }
 
   .segments-grid {

@@ -110,11 +110,43 @@ class PostProcessor:
             处理结果
         """
         try:
-            # 1. 合并视频片段
+            # 1. 检查是否有需要画外音叠加的片段（单人模式新流程）
+            # 流程：生成音频→生成视频→视频标准化→叠加头像
+            pip_segments = []
+            if not config.enable_double_mode and hasattr(task, 'segments'):
+                for seg in task.segments:
+                    if getattr(seg, 'need_pip_overlay', False):
+                        pip_segments.append(seg)
+                        logger.info(f"发现待叠加画外音片段: {seg.segment_id}")
+
+            # 2. 合并视频片段
             video_paths = []
             
             # 处理双人模式
             if config.enable_double_mode:
+                # 检查是否有需要画外音叠加的双人模式
+                has_pip = hasattr(task, 'scene_pip_left_video') or hasattr(task, 'scene_pip_right_video')
+
+                if has_pip:
+                    # 双人模式画外音：新流程 - 先标准化再叠加
+                    logger.info("双人模式：检测到画外音，启用标准化后叠加流程")
+                    # 获取场景视频路径（从 tone 映射中获取）
+                    scene_video_path = None
+                    if hasattr(task, 'completed_tone_videos') and task.completed_tone_videos:
+                        # 取第一个 tone 的场景视频
+                        first_tone = list(task.completed_tone_videos.keys())[0]
+                        scene_video_path = task.completed_tone_videos.get(first_tone)
+
+                    if scene_video_path and (hasattr(task, 'scene_pip_left_video') or hasattr(task, 'scene_pip_right_video')):
+                        # 执行标准化后的 PIP 叠加
+                        processed_path = await self._process_double_pip(
+                            task,
+                            scene_video_path,
+                            config
+                        )
+                        if processed_path:
+                            task.final_video_path = processed_path
+
                 # 检查是否有 final_video_path（双人模式在 video_synthesizer 中已合并完成）
                 if hasattr(task, 'final_video_path') and task.final_video_path:
                     video_paths.append(task.final_video_path)
@@ -126,8 +158,23 @@ class PostProcessor:
                     if task.right_video_path:
                         video_paths.append(task.right_video_path)
             else:
-                # 单人模式
-                video_paths = [seg.output_path for seg in task.segments if seg.output_path]
+                # 单人模式：收集片段并处理画外音叠加
+                # 对于需要 PIP 叠加的片段，先标准化再叠加
+                processed_paths = await self._process_pip_segments(
+                    task.segments,
+                    config
+                )
+                # 收集处理后的路径（processed_paths 键是 segment_id）
+                video_paths = []
+                for seg in task.segments:
+                    if not seg.output_path:
+                        continue
+                    # 如果片段需要 PIP 且已处理完成，使用处理后的路径
+                    if getattr(seg, 'need_pip_overlay', False) and seg.segment_id in processed_paths:
+                        video_paths.append(processed_paths[seg.segment_id])
+                    # 如果片段不需要 PIP，直接使用原路径
+                    elif not getattr(seg, 'need_pip_overlay', False):
+                        video_paths.append(seg.output_path)
             
             if not video_paths:
                 return PostProcessResult(
@@ -503,12 +550,33 @@ class PostProcessor:
                     for path in normalized_paths:
                         f.write(f"file '{os.path.abspath(path)}'\n")
 
-                cmd = [
-                    FFMPEG_PATH, "-f", "concat", "-safe", "0",
-                    "-i", list_file, "-c", "copy", output_path
-                ]
+                # 检查是否所有视频参数完全一致，如果一致则可以使用 -c copy 快速合并
+                all_same_params = all(
+                    meta['width'] == target_width and
+                    meta['height'] == target_height and
+                    abs(meta.get('fps', 30.0) - target_fps) < 0.1
+                    for meta in all_metadata
+                )
 
-                logger.info(f"合并视频命令: {' '.join(cmd)}")
+                if all_same_params:
+                    # 所有视频参数一致，使用 -c copy 快速合并
+                    cmd = [
+                        FFMPEG_PATH, "-f", "concat", "-safe", "0",
+                        "-i", list_file, "-c", "copy", output_path
+                    ]
+                    logger.info(f"合并视频命令（快速模式）: {' '.join(cmd)}")
+                else:
+                    # 视频参数不一致，需要重新编码合并
+                    cmd = [
+                        FFMPEG_PATH, "-f", "concat", "-safe", "0",
+                        "-i", list_file,
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                        "-c:a", "aac", "-b:a", "128k",
+                        "-movflags", "+faststart",
+                        output_path
+                    ]
+                    logger.info(f"合并视频命令（重新编码模式）: {' '.join(cmd)}")
+
                 await async_run_ffmpeg(cmd, check=True)
                 os.remove(list_file)
                 
@@ -522,6 +590,631 @@ class PostProcessor:
                     
         except Exception as e:
             logger.error(f"视频合并失败: {e}")
+            return False
+
+    async def _process_pip_segments(
+        self,
+        segments: List[Any],
+        config: TaskConfig
+    ) -> Dict[str, str]:
+        """
+        处理需要 PIP 叠加的片段：先标准化场景视频，再叠加说话人视频
+
+        Args:
+            segments: 片段列表
+            config: 任务配置
+
+        Returns:
+            segment_id 到处理后输出路径的映射
+        """
+        result_paths = {}
+
+        # 收集需要 PIP 叠加的片段
+        pip_segments = []
+        for seg in segments:
+            if getattr(seg, 'need_pip_overlay', False):
+                pip_segments.append(seg)
+
+        if not pip_segments:
+            logger.info("没有需要 PIP 叠加的片段")
+            return result_paths
+
+        # 确定目标分辨率（使用配置中的目标分辨率）
+        # 默认使用 1512x2688（竖屏视频）
+        target_width = 1512
+        target_height = 2688
+        target_fps = 30.0
+
+        logger.info(f"开始处理 {len(pip_segments)} 个 PIP 片段，目标分辨率: {target_width}x{target_height}@{target_fps}fps")
+
+        for seg in pip_segments:
+            speaker_video = getattr(seg, 'pending_speaker_video', None)
+            scene_video = getattr(seg, 'scene_video_path', None)
+
+            if not speaker_video or not scene_video:
+                logger.warning(f"段落 {seg.segment_id} 缺少说话人或场景视频路径，跳过叠加")
+                continue
+
+            if not os.path.exists(speaker_video):
+                logger.warning(f"段落 {seg.segment_id} 说话人视频不存在: {speaker_video}")
+                continue
+
+            if not os.path.exists(scene_video):
+                logger.warning(f"段落 {seg.segment_id} 场景视频不存在: {scene_video}")
+                continue
+
+            try:
+                # 步骤1：标准化场景视频到目标分辨率
+                normalized_scene = os.path.join(
+                    self.intermediate_dir,
+                    f"scene_norm_{seg.segment_id}_{os.path.basename(scene_video)}"
+                )
+
+                scene_success = await self._normalize_video(
+                    scene_video,
+                    target_width,
+                    target_height,
+                    target_fps,
+                    normalized_scene
+                )
+
+                if not scene_success or not os.path.exists(normalized_scene):
+                    logger.warning(f"段落 {seg.segment_id} 场景视频标准化失败，跳过叠加")
+                    continue
+
+                # 步骤2：标准化说话人视频到相同分辨率
+                normalized_speaker = os.path.join(
+                    self.intermediate_dir,
+                    f"speaker_norm_{seg.segment_id}_{os.path.basename(speaker_video)}"
+                )
+
+                speaker_success = await self._normalize_video(
+                    speaker_video,
+                    target_width,
+                    target_height,
+                    target_fps,
+                    normalized_speaker
+                )
+
+                if not speaker_success or not os.path.exists(normalized_speaker):
+                    logger.warning(f"段落 {seg.segment_id} 说话人视频标准化失败，跳过叠加")
+                    continue
+
+                # 步骤3：执行 PIP 叠加
+                output_path = os.path.join(
+                    self.output_dir,
+                    f"scene_pip_{seg.segment_id}.mp4"
+                )
+
+                merge_success = await self._merge_pip_video(
+                    scene_video_path=normalized_scene,
+                    pip_video_path=normalized_speaker,
+                    output_path=output_path,
+                    position="bottom-left",
+                    pip_size=0.25,
+                    circle_mask=True,
+                    mix_audio=True,
+                    remove_scene_audio=True
+                )
+
+                if merge_success and os.path.exists(output_path):
+                    # 更新 segment 的 output_path
+                    seg.output_path = output_path
+                    seg.video_path = output_path
+                    result_paths[seg.segment_id] = output_path
+                    logger.info(f"段落 {seg.segment_id} PIP 叠加完成: {output_path}")
+                else:
+                    logger.error(f"段落 {seg.segment_id} PIP 叠加失败")
+
+            except Exception as e:
+                logger.error(f"段落 {seg.segment_id} PIP 处理异常: {e}")
+                continue
+
+        logger.info(f"PIP 片段处理完成: {len(result_paths)}/{len(pip_segments)}")
+        return result_paths
+
+    async def _process_double_pip(
+        self,
+        task: Any,
+        scene_video_path: str,
+        config: TaskConfig
+    ) -> Optional[str]:
+        """
+        处理双人模式画外音叠加：先标准化场景视频和说话人视频，再叠加
+
+        Args:
+            task: 任务对象
+            scene_video_path: 场景视频路径
+            config: 任务配置
+
+        Returns:
+            叠加后的视频路径，失败返回 None
+        """
+        if not scene_video_path or not os.path.exists(scene_video_path):
+            logger.error(f"双人模式 PIP：场景视频不存在: {scene_video_path}")
+            return None
+
+        left_video = getattr(task, 'scene_pip_left_video', None)
+        right_video = getattr(task, 'scene_pip_right_video', None)
+
+        if not left_video and not right_video:
+            logger.warning("双人模式 PIP：没有说话人视频")
+            return None
+
+        # 目标分辨率
+        target_width = 1512
+        target_height = 2688
+        target_fps = 30.0
+
+        try:
+            # 步骤1：标准化场景视频
+            normalized_scene = os.path.join(
+                self.intermediate_dir,
+                f"scene_double_norm_{os.path.basename(scene_video_path)}"
+            )
+
+            scene_success = await self._normalize_video(
+                scene_video_path,
+                target_width,
+                target_height,
+                target_fps,
+                normalized_scene
+            )
+
+            if not scene_success or not os.path.exists(normalized_scene):
+                logger.error("双人模式 PIP：场景视频标准化失败")
+                return None
+
+            # 步骤2：标准化说话人视频（如果有）
+            normalized_left = None
+            normalized_right = None
+
+            if left_video and os.path.exists(left_video):
+                normalized_left = os.path.join(
+                    self.intermediate_dir,
+                    f"speaker_left_norm_{os.path.basename(left_video)}"
+                )
+                left_success = await self._normalize_video(
+                    left_video,
+                    target_width,
+                    target_height,
+                    target_fps,
+                    normalized_left
+                )
+                if not left_success:
+                    normalized_left = None
+
+            if right_video and os.path.exists(right_video):
+                normalized_right = os.path.join(
+                    self.intermediate_dir,
+                    f"speaker_right_norm_{os.path.basename(right_video)}"
+                )
+                right_success = await self._normalize_video(
+                    right_video,
+                    target_width,
+                    target_height,
+                    target_fps,
+                    normalized_right
+                )
+                if not right_success:
+                    normalized_right = None
+
+            # 步骤3：执行叠加
+            output_path = os.path.join(
+                self.output_dir,
+                f"scene_pip_double_{task.task_id}.mp4"
+            )
+
+            if normalized_left and normalized_right:
+                # 双人叠加：使用 merge_dual_pip_video
+                # 需要先导入 VideoSynthesizer 的方法，这里直接实现
+                success = await self._merge_dual_pip_video(
+                    scene_video_path=normalized_scene,
+                    left_pip_path=normalized_left,
+                    right_pip_path=normalized_right,
+                    output_path=output_path,
+                    left_position="bottom-left",
+                    right_position="bottom-right",
+                    pip_size=0.25,
+                    circle_mask=True
+                )
+            elif normalized_left:
+                # 只有左说话人
+                success = await self._merge_pip_video(
+                    scene_video_path=normalized_scene,
+                    pip_video_path=normalized_left,
+                    output_path=output_path,
+                    position="bottom-left",
+                    pip_size=0.25,
+                    circle_mask=True,
+                    mix_audio=True,
+                    remove_scene_audio=True
+                )
+            elif normalized_right:
+                # 只有右说话人
+                success = await self._merge_pip_video(
+                    scene_video_path=normalized_scene,
+                    pip_video_path=normalized_right,
+                    output_path=output_path,
+                    position="bottom-right",
+                    pip_size=0.25,
+                    circle_mask=True,
+                    mix_audio=True,
+                    remove_scene_audio=True
+                )
+            else:
+                logger.error("双人模式 PIP：没有可用的说话人视频")
+                return None
+
+            if success and os.path.exists(output_path):
+                logger.info(f"双人模式 PIP 叠加完成: {output_path}")
+                return output_path
+            else:
+                logger.error("双人模式 PIP 叠加失败")
+                return None
+
+        except Exception as e:
+            logger.error(f"双人模式 PIP 处理异常: {e}")
+            return None
+
+    async def _merge_dual_pip_video(
+        self,
+        scene_video_path: str,
+        left_pip_path: str,
+        right_pip_path: str,
+        output_path: str,
+        left_position: str = "bottom-left",
+        right_position: str = "bottom-right",
+        pip_size: float = 0.25,
+        circle_mask: bool = True
+    ) -> bool:
+        """
+        将左右两个��外音视频叠加到场景视频（先左后右切换）
+
+        Args:
+            scene_video_path: 场景视频路径
+            left_pip_path: 左说话人视频路径
+            right_pip_path: 右说话人视频路径
+            output_path: 输出路径
+            left_position: 左说话人位置
+            right_position: 右说话人位置
+            pip_size: PIP 大小比例
+            circle_mask: 是否使用圆形遮罩
+
+        Returns:
+            是否成功
+        """
+        try:
+            # 获取场景视频信息
+            scene_info = await self._get_video_metadata(scene_video_path)
+            if not scene_info:
+                logger.error(f"无法获取场景视频信息: {scene_video_path}")
+                return False
+
+            scene_width = scene_info.get('width', 1920)
+            scene_height = scene_info.get('height', 1080)
+
+            # 计算 PIP 尺寸
+            pip_width = int(scene_width * pip_size)
+            pip_height = int(pip_width * 1.0)
+
+            # 根据位置计算坐标
+            if left_position == "bottom-left":
+                left_x, left_y = 20, scene_height - pip_height - 20
+            else:
+                left_x, left_y = 20, scene_height - pip_height - 20
+
+            if right_position == "bottom-right":
+                right_x, right_y = scene_width - pip_width - 20, scene_height - pip_height - 20
+            else:
+                right_x, right_y = scene_width - pip_width - 20, scene_height - pip_height - 20
+
+            # 构建滤镜链
+            filters = []
+
+            # 缩放左 PIP
+            filters.append(f"[1:v]scale={pip_width}:{pip_height}:force_original_aspect_ratio=decrease,pad={pip_width}:{pip_height}:(ow-iw)/2:(oh-ih)/2,setsar=1[v_left]")
+
+            # 缩放右 PIP
+            filters.append(f"[2:v]scale={pip_width}:{pip_height}:force_original_aspect_ratio=decrease,pad={pip_width}:{pip_height}:(ow-iw)/2:(oh-ih)/2,setsar=1[v_right]")
+
+            # 圆形遮罩
+            if circle_mask:
+                filters.append(f"[v_left]geq=if(gt((X-{pip_width/2})^2+(Y-{pip_height/2})^2,({pip_width/2})^2),0,255):128:128[v_left_mask]")
+                filters.append(f"[v_right]geq=if(gt((X-{pip_width/2})^2+(Y-{pip_height/2})^2,({pip_width/2})^2),0,255):128:128[v_right_mask]")
+                left_filter = "[v_left_mask]"
+                right_filter = "[v_right_mask]"
+            else:
+                left_filter = "[v_left]"
+                right_filter = "[v_right]"
+
+            # 先叠加左 PIP
+            filters.append(f"[0:v]{left_filter}overlay={left_x}:{left_y}[v_with_left]")
+
+            # 再叠加右 PIP（在左边叠加后的结果上）
+            filters.append(f"[v_with_left]{right_filter}overlay={right_x}:{right_y}[outv]")
+
+            filter_complex = ";".join(filters)
+
+            cmd = [
+                FFMPEG_PATH,
+                "-stream_loop", "-1",
+                "-i", scene_video_path,
+                "-i", left_pip_path,
+                "-i", right_pip_path,
+                "-filter_complex", filter_complex,
+                "-map", "[outv]",
+                "-map", "0:a",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                "-c:a", "aac", "-b:a", "128k",
+                "-shortest",
+                "-movflags", "+faststart",
+                output_path
+            ]
+
+            logger.info(f"双人 PIP 叠加命令: {' '.join(cmd)}")
+            await async_run_ffmpeg(cmd, check=True)
+
+            if os.path.exists(output_path):
+                logger.info(f"双人 PIP 叠加成功: {output_path}")
+                return True
+            else:
+                logger.error(f"双人 PIP 叠加后文件不存在: {output_path}")
+                return False
+
+        except Exception as e:
+            logger.error(f"双人 PIP 叠加失败: {e}")
+            return False
+
+    async def _apply_pip_overlay(
+        self,
+        segments: List[Any],
+        target_width: int,
+        target_height: int,
+        target_fps: float
+    ) -> Dict[str, str]:
+        """
+        对需要画外音叠加的片段进行标准化后的 PIP 叠加
+
+        Args:
+            segments: 包含 pending_speaker_video 和 scene_video_path 的片段列表
+            target_width: 目标宽度
+            target_height: 目标高度
+            target_fps: 目标帧率
+
+        Returns:
+            segment_id 到叠加后视频路径的映射
+        """
+        result_paths = {}
+
+        # 获取说话人视频的基准分辨率（用于确定叠加位置）
+        # 由于场景视频已被标准化到目标分辨率，叠加位置也基于目标分辨率
+
+        for segment in segments:
+            # 检查是否需要 PIP 叠加
+            if not getattr(segment, 'need_pip_overlay', False):
+                continue
+
+            speaker_video = getattr(segment, 'pending_speaker_video', None)
+            scene_video = getattr(segment, 'scene_video_path', None)
+
+            if not speaker_video or not scene_video:
+                logger.warning(f"段落 {segment.segment_id} 缺少说话人或场景视频路径，跳过叠加")
+                continue
+
+            if not os.path.exists(speaker_video):
+                logger.warning(f"段落 {segment.segment_id} 说话人视频不存在: {speaker_video}")
+                continue
+
+            if not os.path.exists(scene_video):
+                logger.warning(f"段落 {segment.segment_id} 场景视频不存在: {scene_video}")
+                continue
+
+            try:
+                # 标准化说话人视频到目标分辨率
+                normalized_speaker = os.path.join(
+                    self.intermediate_dir,
+                    f"pip_normalized_{segment.segment_id}_{os.path.basename(speaker_video)}"
+                )
+
+                # 标准化说话人视频
+                speaker_normalized = await self._normalize_video(
+                    speaker_video,
+                    target_width,
+                    target_height,
+                    target_fps,
+                    normalized_speaker
+                )
+
+                if not speaker_normalized:
+                    logger.warning(f"段落 {segment.segment_id} 说话人视频标准化失败，跳过叠加")
+                    continue
+
+                # 标准化场景视频到目标分辨率
+                normalized_scene = os.path.join(
+                    self.intermediate_dir,
+                    f"scene_normalized_{segment.segment_id}_{os.path.basename(scene_video)}"
+                )
+
+                scene_normalized = await self._normalize_video(
+                    scene_video,
+                    target_width,
+                    target_height,
+                    target_fps,
+                    normalized_scene
+                )
+
+                if not scene_normalized:
+                    logger.warning(f"段落 {segment.segment_id} 场景视频标准化失败，跳过叠加")
+                    continue
+
+                # 执行 PIP 叠加（基于标准化后的分辨率）
+                output_path = os.path.join(
+                    self.intermediate_dir,
+                    f"scene_pip_{segment.segment_id}.mp4"
+                )
+
+                success = await self._merge_pip_video(
+                    scene_video_path=scene_normalized,
+                    pip_video_path=speaker_normalized,
+                    output_path=output_path,
+                    position="bottom-left",
+                    pip_size=0.25,
+                    circle_mask=True,
+                    mix_audio=True,
+                    remove_scene_audio=True
+                )
+
+                if success and os.path.exists(output_path):
+                    result_paths[segment.segment_id] = output_path
+                    logger.info(f"段落 {segment.segment_id} PIP 叠加完成: {output_path}")
+                else:
+                    logger.error(f"段落 {segment.segment_id} PIP 叠加失败")
+
+            except Exception as e:
+                logger.error(f"段落 {segment.segment_id} PIP 叠加异常: {e}")
+                continue
+
+        return result_paths
+
+    async def _merge_pip_video(
+        self,
+        scene_video_path: str,
+        pip_video_path: str,
+        output_path: str,
+        position: str = "bottom-left",
+        pip_size: float = 0.25,
+        circle_mask: bool = True,
+        mix_audio: bool = False,
+        remove_scene_audio: bool = False
+    ) -> bool:
+        """
+        将画外音视频叠加到场景视频（使用 -stream_loop -1 保持画面持续）
+
+        Args:
+            scene_video_path: 场景视频路径
+            pip_video_path: 画外音视频路径
+            output_path: 输出路径
+            position: 位置
+            pip_size: PIP 大小比例
+            circle_mask: 是否使用圆形遮罩
+            mix_audio: 是否混合音频
+            remove_scene_audio: 是否移除场景音频
+
+        Returns:
+            是否成功
+        """
+        try:
+            # 获取场景视频信息
+            scene_info = await self._get_video_metadata(scene_video_path)
+            if not scene_info:
+                logger.error(f"无法获取场景视频信息: {scene_video_path}")
+                return False
+
+            scene_width = scene_info.get('width', 1920)
+            scene_height = scene_info.get('height', 1080)
+
+            # 计算 PIP 尺寸和位置
+            pip_width = int(scene_width * pip_size)
+            pip_height = int(pip_width * 1.0)  # 保持 1:1 比例
+
+            # 根据位置��算坐标
+            if position == "bottom-left":
+                pip_x = 20
+                pip_y = scene_height - pip_height - 20
+            elif position == "bottom-right":
+                pip_x = scene_width - pip_width - 20
+                pip_y = scene_height - pip_height - 20
+            elif position == "top-left":
+                pip_x = 20
+                pip_y = 20
+            elif position == "top-right":
+                pip_x = scene_width - pip_width - 20
+                pip_y = 20
+            else:
+                pip_x = 20
+                pip_y = scene_height - pip_height - 20
+
+            # 构建滤镜链
+            filters = []
+
+            # 缩放 PIP 视频
+            filters.append(f"[1:v]scale={pip_width}:{pip_height}:force_original_aspect_ratio=decrease,pad={pip_width}:{pip_height}:(ow-iw)/2:(oh-ih)/2,setsar=1[v_scaled]")
+
+            # 如果需要圆形遮罩
+            if circle_mask:
+                # 创建圆形蒙版
+                filters.append(f"[v_scaled]geq=if(gt((X-{pip_width/2})^2+(Y-{pip_height/2})^2,({pip_width/2})^2),0,255):128:128[v_masked]")
+                pip_filter = "[v_masked]"
+            else:
+                pip_filter = "[v_scaled]"
+
+            # 移除场景音频（画外音模式）
+            if remove_scene_audio:
+                audio_filter = "-an"
+            else:
+                audio_filter = "-c:a" if not mix_audio else "-c:a copy"
+
+            # 构建命令
+            if mix_audio:
+                # 混合场景音频和 PIP 音频
+                cmd = [
+                    FFMPEG_PATH,
+                    "-stream_loop", "-1",
+                    "-i", scene_video_path,
+                    "-i", pip_video_path,
+                    "-filter_complex", f"{pip_filter}[pip];[0:v][pip]overlay={pip_x}:{pip_y}[outv]",
+                    "-map", "[outv]",
+                    "-map", "0:a", "-map", "1:a",
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "128k",
+                    "-shortest",
+                    "-movflags", "+faststart",
+                    output_path
+                ]
+            else:
+                if remove_scene_audio:
+                    cmd = [
+                        FFMPEG_PATH,
+                        "-stream_loop", "-1",
+                        "-i", scene_video_path,
+                        "-i", pip_video_path,
+                        "-filter_complex", f"{pip_filter}[pip];[0:v][pip]overlay={pip_x}:{pip_y}[outv]",
+                        "-map", "[outv]",
+                        "-an",
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                        "-shortest",
+                        "-movflags", "+faststart",
+                        output_path
+                    ]
+                else:
+                    cmd = [
+                        FFMPEG_PATH,
+                        "-stream_loop", "-1",
+                        "-i", scene_video_path,
+                        "-i", pip_video_path,
+                        "-filter_complex", f"{pip_filter}[pip];[0:v][pip]overlay={pip_x}:{pip_y}[outv]",
+                        "-map", "[outv]",
+                        "-map", "0:a",
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+                        "-c:a", "aac", "-b:a", "128k",
+                        "-shortest",
+                        "-movflags", "+faststart",
+                        output_path
+                    ]
+
+            logger.info(f"PIP 叠加命令: {' '.join(cmd)}")
+            await async_run_ffmpeg(cmd, check=True)
+
+            if os.path.exists(output_path):
+                logger.info(f"PIP 叠加成功: {output_path}")
+                return True
+            else:
+                logger.error(f"PIP 叠加后文件不存在: {output_path}")
+                return False
+
+        except Exception as e:
+            logger.error(f"PIP 叠加失败: {e}")
             return False
 
     async def _concat_videos_with_transition(
