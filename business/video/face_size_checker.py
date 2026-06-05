@@ -12,16 +12,17 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
-def quick_check_face_size(video_path: str, sample_frame: int = 0) -> int:
+def quick_check_face_size(video_path: str, sample_frame: int = 0, face_id: int = -1) -> int:
     """
     快速检测视频中的人脸区域大小（仅分析一帧）
 
     Args:
         video_path: 视频路径
         sample_frame: 采样帧索引（默认0，即首帧）
+        face_id: 目标人脸序号，-1=最大人脸，0=从上到下第一张脸，1=从上到下第二张脸
 
     Returns:
-        最大人脸尺寸（宽或高的较大值），0表示无人脸或读取失败
+        目标人脸尺寸（宽或高的较大值），0表示无人脸或读取失败
     """
     if not os.path.exists(video_path):
         logger.warning(f"视频文件不存在: {video_path}")
@@ -68,33 +69,50 @@ def quick_check_face_size(video_path: str, sample_frame: int = 0) -> int:
             logger.info(f"视频 {video_path} 无人脸，sample_frame={sample_frame}")
             return 0
 
-        # 返回最大人脸的尺寸（宽或高的较大值）
-        max_size = 0
-        for (x, y, w, h) in faces:
-            size = max(w, h)
-            if size > max_size:
-                max_size = size
-
-        logger.info(f"视频 {video_path} 最大人脸区域: {max_size}px")
-        return max_size
+        if face_id == -1:
+            # 返回最大人脸的尺寸
+            max_size = 0
+            for (x, y, w, h) in faces:
+                size = max(w, h)
+                if size > max_size:
+                    max_size = size
+            logger.info(f"视频 {video_path} 最大人脸区域: {max_size}px")
+            return max_size
+        else:
+            # 按 y 坐标从上到下排序，选择指定序号的人脸
+            sorted_faces = sorted(faces, key=lambda f: f[1])
+            if face_id < len(sorted_faces):
+                x, y, w, h = sorted_faces[face_id]
+                size = max(w, h)
+                logger.info(f"视频 {video_path} face_id={face_id} 人脸区域: {size}px (共{len(sorted_faces)}张脸)")
+                return size
+            else:
+                logger.info(f"视频 {video_path} face_id={face_id} 超出范围(共{len(sorted_faces)}张脸)，使用最大人脸")
+                max_size = 0
+                for (x, y, w, h) in faces:
+                    size = max(w, h)
+                    if size > max_size:
+                        max_size = size
+                return max_size
 
     except Exception as e:
         logger.error(f"人脸区域检测失败: {e}")
         return 0
 
 
-def should_enable_chaofen(video_path: str, min_face_size: int = 384) -> int:
+def should_enable_chaofen(video_path: str, min_face_size: int = 384, face_id: int = -1) -> int:
     """
     判断视频是否需要启用超分
 
     Args:
         video_path: 视频路径
         min_face_size: 最小人脸尺寸阈值（默认384像素）
+        face_id: 目标人脸序号，-1=最大人脸，0=第一张脸，1=第二张脸
 
     Returns:
         1 表示启用超分，0 表示不启用
     """
-    face_size = quick_check_face_size(video_path)
+    face_size = quick_check_face_size(video_path, face_id=face_id)
 
     if face_size == 0:
         logger.info(f"视频 {video_path} 无人脸，不启用超分")

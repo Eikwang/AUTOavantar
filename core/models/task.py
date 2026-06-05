@@ -143,6 +143,9 @@ class ScriptSegment:
     speaker: str = ""  # 说话人标识，"left" 或 "right"（双人模式）
     emotion_params: Dict[str, float] = field(default_factory=dict)  # 情绪向量参数 vec1-vec8
     is_scene_label: bool = False  # 是否为场景标签（场景标签不需要情绪参数）
+    pending_speaker_video: Optional[str] = None  # 画外音说话人视频路径
+    scene_video_path: Optional[str] = None  # 画外音场景视频路径
+    need_pip_overlay: bool = False  # 是否需要画外音叠加
 
 
 @dataclass
@@ -325,6 +328,10 @@ class Task:
     pip_left_video_path: Optional[str] = None
     pip_right_video_path: Optional[str] = None
     pip_result_path: Optional[str] = None  # 画外音合成结果路径
+    pip_speaker_videos: Optional[Dict[str, Dict[str, str]]] = None  # 画外音说话人视频路径，key=标签，value={left/right/scene: path}
+    scene_pip_left_video: Optional[str] = None  # 场景画外音左说话人视频
+    scene_pip_right_video: Optional[str] = None  # 场景画外音右说话人视频
+    scene_pip_processed: Optional[Any] = None  # 已处理画外音场景标签集合
 
     # 元数据
     created_at: datetime = field(default_factory=datetime.now)

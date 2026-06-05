@@ -359,6 +359,18 @@ class DigitalHumanWorkflow:
                             task.final_video_path = tg.video_path
                             logger.info(f"所有标签已完成，从检查点恢复 final_video_path: {task.final_video_path}")
                             break
+
+            # 恢复画外音相关数据
+            if checkpoint.pip_speaker_videos:
+                task.pip_speaker_videos = checkpoint.pip_speaker_videos
+                logger.info(f"从检查点恢复 pip_speaker_videos: {list(checkpoint.pip_speaker_videos.keys())}")
+            if checkpoint.scene_pip_left_video:
+                task.scene_pip_left_video = checkpoint.scene_pip_left_video
+            if checkpoint.scene_pip_right_video:
+                task.scene_pip_right_video = checkpoint.scene_pip_right_video
+            if checkpoint.scene_pip_processed:
+                task.scene_pip_processed = set(checkpoint.scene_pip_processed)
+                logger.info(f"从检查点恢复 scene_pip_processed: {checkpoint.scene_pip_processed}")
         else:
             if opening_video:
                 task.opening_video = opening_video
@@ -1482,6 +1494,43 @@ class DigitalHumanWorkflow:
                 except Exception as e:
                     logger.warning(f"清理静音文件失败 {file_path}: {e}")
 
+        # 3. 清理画外音说话人视频中间文件
+        pip_cleaned = 0
+        # 清理 pip_speaker_videos 中的说话人视频
+        if task.pip_speaker_videos:
+            for tone, tone_data in task.pip_speaker_videos.items():
+                for key in ('left', 'right'):
+                    file_path = tone_data.get(key)
+                    if file_path and os.path.exists(file_path):
+                        try:
+                            os.remove(file_path)
+                            pip_cleaned += 1
+                            logger.debug(f"已清理画外音说话人视频: {file_path}")
+                        except Exception as e:
+                            logger.warning(f"清理画外音说话人视频失败 {file_path}: {e}")
+        # 清理单人模式 Segment 上的说话人视频
+        if task.segments:
+            for seg in task.segments:
+                if seg.pending_speaker_video and os.path.exists(seg.pending_speaker_video):
+                    try:
+                        os.remove(seg.pending_speaker_video)
+                        pip_cleaned += 1
+                        logger.debug(f"已清理段落说话人视频: {seg.pending_speaker_video}")
+                    except Exception as e:
+                        logger.warning(f"清理段落说话人视频失败 {seg.pending_speaker_video}: {e}")
+        # 清理 Task 级别的画外音视频路径
+        for attr in ('scene_pip_left_video', 'scene_pip_right_video'):
+            file_path = getattr(task, attr, None)
+            if file_path and os.path.exists(file_path):
+                try:
+                    os.remove(file_path)
+                    pip_cleaned += 1
+                    logger.debug(f"已清理画外音视频: {file_path}")
+                except Exception as e:
+                    logger.warning(f"清理画外音视频失败 {file_path}: {e}")
+        if pip_cleaned > 0:
+            logger.info(f"已清理 {pip_cleaned} 个画外音说话人中间文件")
+
     def close(self):
         """关闭所有模块"""
         self.audio_processor.close()
@@ -1581,6 +1630,18 @@ class DigitalHumanWorkflow:
             if hasattr(task, '_subtitle_path') and task._subtitle_path:
                 checkpoint.subtitle_path = task._subtitle_path
                 logger.info(f"保存字幕文件路径到检查点: {checkpoint.subtitle_path}")
+
+            # 保存画外音相关数据
+            if task.pip_speaker_videos:
+                checkpoint.pip_speaker_videos = task.pip_speaker_videos
+                logger.info(f"保存画外音说话人视频到检查点: {list(task.pip_speaker_videos.keys())}")
+            if task.scene_pip_left_video:
+                checkpoint.scene_pip_left_video = task.scene_pip_left_video
+            if task.scene_pip_right_video:
+                checkpoint.scene_pip_right_video = task.scene_pip_right_video
+            if task.scene_pip_processed:
+                checkpoint.scene_pip_processed = list(task.scene_pip_processed)
+                logger.info(f"保存已处理画外音场景标签到检查点: {checkpoint.scene_pip_processed}")
             
             checkpoint_json = checkpoint.to_json()
 

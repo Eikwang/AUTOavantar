@@ -54,6 +54,10 @@ class CheckpointData:
     
     double_mode_files: List[str] = field(default_factory=list)
     subtitle_path: Optional[str] = None
+    pip_speaker_videos: Optional[Dict[str, Any]] = None
+    scene_pip_left_video: Optional[str] = None
+    scene_pip_right_video: Optional[str] = None
+    scene_pip_processed: Optional[List[str]] = None
     
     def to_json(self) -> str:
         """序列化为 JSON 字符串"""
@@ -89,7 +93,11 @@ class CheckpointData:
             scene_videos=data.get('scene_videos', []),
             ending_video=data.get('ending_video'),
             double_mode_files=data.get('double_mode_files', []),
-            subtitle_path=data.get('subtitle_path')
+            subtitle_path=data.get('subtitle_path'),
+            pip_speaker_videos=data.get('pip_speaker_videos'),
+            scene_pip_left_video=data.get('scene_pip_left_video'),
+            scene_pip_right_video=data.get('scene_pip_right_video'),
+            scene_pip_processed=data.get('scene_pip_processed')
         )
     
     def update_stage(self, stage: str):
@@ -186,6 +194,9 @@ def serialize_segments(segments: List[Any]) -> List[Dict]:
             'audio_duration': getattr(seg, 'audio_duration', 0.0),
             'speaker': getattr(seg, 'speaker', ''),
             'is_scene_label': getattr(seg, 'is_scene_label', False),
+            'pending_speaker_video': getattr(seg, 'pending_speaker_video', None),
+            'scene_video_path': getattr(seg, 'scene_video_path', None),
+            'need_pip_overlay': getattr(seg, 'need_pip_overlay', False),
         }
         result.append(seg_dict)
     return result
@@ -234,6 +245,9 @@ def deserialize_segments(data: List[Dict]) -> List[Any]:
             audio_duration=item.get('audio_duration', 0.0),
             speaker=item.get('speaker', ''),
             is_scene_label=item.get('is_scene_label', False),
+            pending_speaker_video=item.get('pending_speaker_video'),
+            scene_video_path=item.get('scene_video_path'),
+            need_pip_overlay=item.get('need_pip_overlay', False),
         )
         result.append(segment)
     return result
