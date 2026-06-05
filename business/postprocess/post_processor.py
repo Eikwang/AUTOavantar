@@ -129,9 +129,13 @@ class PostProcessor:
 
                 if has_pip:
                     # 双人模式画外音：对每个 tone 的场景视频执行 PIP 叠加
+                    # 修复：按原始 tone 顺序构建 video_paths，场景标签用叠加后的视频，
+                    # 非场景标签用 completed_tone_videos 中的原始视频，避免重复包含
                     logger.info("双人模式：检测到画外音，启用标准化后叠加流程")
                     pip_speaker_videos = task.pip_speaker_videos
-                    processed_pip_paths = []
+                    # 叠加结果映射：tone -> 叠加后路径
+                    pip_overlay_map = {}
+
                     if pip_speaker_videos:
                         # 遍历所有 tone，对每个 tone 的场景视频执行 PIP 叠加
                         for tone, tone_data in pip_speaker_videos.items():
@@ -145,35 +149,43 @@ class PostProcessor:
                                 config
                             )
                             if processed_path:
-                                processed_pip_paths.append(processed_path)
+                                pip_overlay_map[tone] = processed_path
                                 logger.info(f"双人模式 PIP：tone '{tone}' 叠加完成")
                             else:
                                 logger.warning(f"双人模式 PIP：tone '{tone}' 叠加失败")
-                        # 将所有 PIP 处理后的场景视频加入最终路径列表
-                        video_paths.extend(processed_pip_paths)
-                    elif hasattr(task, 'completed_tone_videos') and task.completed_tone_videos:
-                        # 回退：使用 completed_tone_videos 的第一个 tone
-                        first_tone = list(task.completed_tone_videos.keys())[0]
-                        scene_video_path = task.completed_tone_videos.get(first_tone)
-                        if scene_video_path:
-                            processed_path = await self._process_double_pip(
-                                task,
-                                scene_video_path,
-                                config
-                            )
-                            if processed_path:
-                                task.final_video_path = processed_path
 
-                # 检查是否有 final_video_path（双人模式在 video_synthesizer 中已合并完成）
-                if hasattr(task, 'final_video_path') and task.final_video_path:
-                    video_paths.append(task.final_video_path)
-                    logger.info(f"双人模式：使用已合并的视频: {task.final_video_path}")
-                # 检查是否有左右说话人的视频（备选方案）
-                elif hasattr(task, 'left_video_path') and hasattr(task, 'right_video_path'):
-                    if task.left_video_path:
-                        video_paths.append(task.left_video_path)
-                    if task.right_video_path:
-                        video_paths.append(task.right_video_path)
+                    # 按原始 tone 顺序构建 video_paths
+                    completed_tone_videos = getattr(task, 'completed_tone_videos', {})
+                    if completed_tone_videos:
+                        for tone, tone_path in completed_tone_videos.items():
+                            if tone in pip_overlay_map:
+                                # 场景标签：使用叠加后的视频
+                                video_paths.append(pip_overlay_map[tone])
+                                logger.info(f"双人模式 PIP：tone '{tone}' 使用叠加后视频: {pip_overlay_map[tone]}")
+                            elif tone_path and os.path.exists(tone_path):
+                                # 非场景标签：使用原始视频
+                                video_paths.append(tone_path)
+                                logger.info(f"双人模式：tone '{tone}' 使用原始视频: {tone_path}")
+                    elif pip_overlay_map:
+                        # 没有 completed_tone_videos，直接用叠加结果
+                        video_paths.extend(pip_overlay_map.values())
+
+                    if not video_paths:
+                        # 回退：尝试使用 final_video_path
+                        if hasattr(task, 'final_video_path') and task.final_video_path:
+                            video_paths.append(task.final_video_path)
+                            logger.warning("双人模式 PIP：无法按 tone 顺序构建，回退使用 final_video_path")
+                else:
+                    # 无画外音的双人模式：使用 final_video_path
+                    if hasattr(task, 'final_video_path') and task.final_video_path:
+                        video_paths.append(task.final_video_path)
+                        logger.info(f"双人模式：使用已合并的视频: {task.final_video_path}")
+                    # 检查是否有左右说话人的视频（备选方案）
+                    elif hasattr(task, 'left_video_path') and hasattr(task, 'right_video_path'):
+                        if task.left_video_path:
+                            video_paths.append(task.left_video_path)
+                        if task.right_video_path:
+                            video_paths.append(task.right_video_path)
             else:
                 # 单人模式：收集片段并处理画外音叠加
                 # 对于需要 PIP 叠加的片段，先标准化再叠加
@@ -191,6 +203,10 @@ class PostProcessor:
                         video_paths.append(processed_paths[seg.segment_id])
                     # 如果片段不需要 PIP，直接使用原路径
                     elif not getattr(seg, 'need_pip_overlay', False):
+                        video_paths.append(seg.output_path)
+                    # 画外音叠加失败时回退使用对齐后的场景视频
+                    else:
+                        logger.warning(f"段落 {seg.segment_id} 画外音叠加失败，回退使用场景视频: {seg.output_path}")
                         video_paths.append(seg.output_path)
             
             if not video_paths:
@@ -535,9 +551,15 @@ class PostProcessor:
                     logger.error("无法获取任何视频的元数据")
                     return False
 
-                # 选择面积最大（像素数最多）的视频作为基准，使用其完整分辨率
-                # 不能分别对 width 和 height 取 max，否则横屏+竖屏混合会得到正方形等荒谬比例
-                base_meta = max(all_metadata, key=lambda m: m.get('width', 0) * m.get('height', 0))
+                # 选择面积最大（像素数最多）的视频作为基准
+                # 横竖屏混合时，按多数方向过滤候选视频
+                landscape_metas = [m for m in all_metadata if m.get('width', 0) >= m.get('height', 0)]
+                portrait_metas = [m for m in all_metadata if m.get('width', 0) < m.get('height', 0)]
+                if len(landscape_metas) >= len(portrait_metas):
+                    candidates = landscape_metas if landscape_metas else all_metadata
+                else:
+                    candidates = portrait_metas if portrait_metas else all_metadata
+                base_meta = max(candidates, key=lambda m: m.get('width', 0) * m.get('height', 0))
                 target_width = base_meta['width']
                 target_height = base_meta['height']
                 target_fps = max(m.get('fps', 30.0) for m in all_metadata)
@@ -662,9 +684,36 @@ class PostProcessor:
                 continue
 
         if not found_any:
-            logger.warning("未找到任何非场景标签视频，使用默认分辨率 1512x2688")
-            target_width = 1512
-            target_height = 2688
+            # 没有非场景标签视频，从场景标签视频中采样目标分辨率
+            for seg in segments:
+                video_path = getattr(seg, 'output_path', None)
+                if not video_path or not os.path.exists(video_path):
+                    continue
+
+                try:
+                    meta = await self._get_video_metadata(video_path)
+                    if not meta:
+                        continue
+
+                    width = meta.get('width', 0)
+                    height = meta.get('height', 0)
+                    area = width * height
+
+                    if area > max_area:
+                        max_area = area
+                        target_width = width
+                        target_height = height
+                        found_any = True
+                        logger.info(f"从场景标签更新目标分辨率: {target_width}x{target_height} (面积={area}, 来源={video_path})")
+
+                except Exception as e:
+                    logger.warning(f"获取视频元数据失败: {video_path}, 错误: {e}")
+                    continue
+
+        if not found_any:
+            logger.warning("未找到任何视频，使用默认分辨率 1920x1080")
+            target_width = 1920
+            target_height = 1080
 
         logger.info(f"最终目标分辨率: {target_width}x{target_height}")
         return target_width, target_height
@@ -796,12 +845,14 @@ class PostProcessor:
         # 从 pip_speaker_videos 字典查找与场景视频匹配的说话人
         left_video = None
         right_video = None
+        current_tone = "unknown"
         pip_speaker_videos = task.pip_speaker_videos
         if pip_speaker_videos:
             for tone, tone_data in pip_speaker_videos.items():
                 if tone_data.get('scene') == scene_video_path:
                     left_video = tone_data.get('left')
                     right_video = tone_data.get('right')
+                    current_tone = tone
                     logger.info(f"双人模式 PIP：从 pip_speaker_videos 匹配 tone '{tone}' 的说话人视频")
                     break
             # 如果未找到精确匹配，使用第一个 tone 的说话人
@@ -810,6 +861,7 @@ class PostProcessor:
                 tone_data = pip_speaker_videos[first_tone]
                 left_video = tone_data.get('left')
                 right_video = tone_data.get('right')
+                current_tone = first_tone
                 logger.info(f"双人模式 PIP：未找到精确匹配，使用第一个 tone '{first_tone}' 的说话人视频")
         else:
             # 回退到 Task 平面属性
@@ -849,7 +901,7 @@ class PostProcessor:
             # 步骤3：执行叠加（说话人视频直接使用原始路径）
             output_path = os.path.join(
                 self.output_dir,
-                f"scene_pip_double_{task.task_id}.mp4"
+                f"scene_pip_double_{task.task_id}_{current_tone}.mp4"
             )
 
             if left_video and os.path.exists(left_video) and right_video and os.path.exists(right_video):
@@ -963,18 +1015,20 @@ class PostProcessor:
 
             if circle_mask:
                 # 缩放左 PIP + 圆形遮罩(format=yuva420p + geq alpha 通道)
+                # 注意: geq 滤镜中冒号是 filter 选项分隔符, 必须用 \: 转义
+                # 使用 lum='p(X,Y)' 保持亮度通道原值, a= 表达式实现圆形遮罩
                 filters.append(
                     f"[1:v]scale={pip_width}:{pip_height}:force_original_aspect_ratio=decrease,"
                     f"pad={pip_width}:{pip_height}:(ow-iw)/2:(oh-ih)/2,"
                     f"setsar=1,format=yuva420p,"
-                    f"geq=r:g:b:'if(gt((X-W/2)*(X-W/2)+(Y-H/2)*(Y-H/2),(W/2)*(W/2)),0,255)'[pip_left]"
+                    f"geq=lum='p(X,Y)'\\:a='if(gt((X-W/2)*(X-W/2)+(Y-H/2)*(Y-H/2),(W/2)*(W/2)),0,255)'[pip_left]"
                 )
                 # 缩放右 PIP + 圆形遮罩
                 filters.append(
                     f"[2:v]scale={pip_width}:{pip_height}:force_original_aspect_ratio=decrease,"
                     f"pad={pip_width}:{pip_height}:(ow-iw)/2:(oh-ih)/2,"
                     f"setsar=1,format=yuva420p,"
-                    f"geq=r:g:b:'if(gt((X-W/2)*(X-W/2)+(Y-H/2)*(Y-H/2),(W/2)*(W/2)),0,255)'[pip_right]"
+                    f"geq=lum='p(X,Y)'\\:a='if(gt((X-W/2)*(X-W/2)+(Y-H/2)*(Y-H/2),(W/2)*(W/2)),0,255)'[pip_right]"
                 )
             else:
                 # 缩放左 PIP(无遮罩)
@@ -1215,11 +1269,13 @@ class PostProcessor:
 
             if circle_mask:
                 # 圆形遮罩: format=yuva420p + geq alpha 通道
+                # 注意: geq 滤镜中冒号是 filter 选项分隔符, 必须用 \: 转义
+                # 使用 lum='p(X,Y)' 保持亮度通道原值, a= 表达式实现圆形遮罩
                 pip_filter_chain = (
                     f"[1:v]scale={pw}:{ph}:force_original_aspect_ratio=decrease,"
                     f"pad={pw}:{ph}:(ow-iw)/2:(oh-ih)/2,"
                     f"setsar=1,format=yuva420p,"
-                    f"geq=r:g:b:'if(gt((X-W/2)*(X-W/2)+(Y-H/2)*(Y-H/2),(W/2)*(W/2)),0,255)'[pip]"
+                    f"geq=lum='p(X,Y)'\\:a='if(gt((X-W/2)*(X-W/2)+(Y-H/2)*(Y-H/2),(W/2)*(W/2)),0,255)'[pip]"
                 )
             else:
                 # 无遮罩: 直接 scale + pad
@@ -1323,9 +1379,15 @@ class PostProcessor:
                     logger.error("无法获取任何视频的元数据")
                     return False
 
-                # 选择面积最大（像素数最多）的视频作为基准，使用其完整分辨率
-                # 不能分别对 width 和 height 取 max，否则横屏+竖屏混合会得到正方形等荒谬比例
-                base_meta = max(all_metadata, key=lambda m: m.get('width', 0) * m.get('height', 0))
+                # 选择面积最大（像素数最多）的视频作为基准
+                # 横竖屏混合时，按多数方向过滤候选视频
+                landscape_metas = [m for m in all_metadata if m.get('width', 0) >= m.get('height', 0)]
+                portrait_metas = [m for m in all_metadata if m.get('width', 0) < m.get('height', 0)]
+                if len(landscape_metas) >= len(portrait_metas):
+                    candidates = landscape_metas if landscape_metas else all_metadata
+                else:
+                    candidates = portrait_metas if portrait_metas else all_metadata
+                base_meta = max(candidates, key=lambda m: m.get('width', 0) * m.get('height', 0))
                 target_width = base_meta['width']
                 target_height = base_meta['height']
                 target_fps = max(m.get('fps', 30.0) for m in all_metadata)

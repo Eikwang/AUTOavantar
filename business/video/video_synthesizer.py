@@ -1614,7 +1614,14 @@ class VideoSynthesizer:
 
             # 选择面积最大（像素数最多）的视频作为基准，使用其完整分辨率
             # 不能分别对 width 和 height 取 max，否则横屏+竖屏混合会得到正方形等荒谬比例
-            base_info = max(all_infos, key=lambda m: m.get('width', 0) * m.get('height', 0))
+            # 横竖屏混合时，按多数方向过滤候选视频，避免随机选择不确定的基准
+            landscape_infos = [m for m in all_infos if m.get('width', 0) >= m.get('height', 0)]
+            portrait_infos = [m for m in all_infos if m.get('width', 0) < m.get('height', 0)]
+            if len(landscape_infos) >= len(portrait_infos):
+                candidates = landscape_infos if landscape_infos else all_infos
+            else:
+                candidates = portrait_infos if portrait_infos else all_infos
+            base_info = max(candidates, key=lambda m: m.get('width', 0) * m.get('height', 0))
             target_width = base_info.get('width', 1920)
             target_height = base_info.get('height', 1080)
             target_fps = max(m.get('fps', 30.0) for m in all_infos)
@@ -1747,8 +1754,15 @@ class VideoSynthesizer:
                     logger.error("无法获取任何视频的元数据")
                     return None
 
-                # 选择面积最大（像素数最多）的视频作为基准，使用其完整分辨率
-                base_meta = max(all_metadata, key=lambda m: m.get('width', 0) * m.get('height', 0))
+                # 选择面积最大（像素数最多）的视频作为基准
+                # 横竖屏混合时，按多数方向过滤候选视频
+                landscape_metas = [m for m in all_metadata if m.get('width', 0) >= m.get('height', 0)]
+                portrait_metas = [m for m in all_metadata if m.get('width', 0) < m.get('height', 0)]
+                if len(landscape_metas) >= len(portrait_metas):
+                    candidates = landscape_metas if landscape_metas else all_metadata
+                else:
+                    candidates = portrait_metas if portrait_metas else all_metadata
+                base_meta = max(candidates, key=lambda m: m.get('width', 0) * m.get('height', 0))
                 target_width = base_meta.get('width', 1920)
                 target_height = base_meta.get('height', 1080)
                 target_fps = max(m.get('fps', 30.0) for m in all_metadata)

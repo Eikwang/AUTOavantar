@@ -125,7 +125,7 @@ def main():
     print("GFPGAN 人脸区域增强工具 (智能模式)")
     print("=" * 70)
 
-    model_path = r'd:\AI\AUTOavantar\engines\heygem\gfpgan-1024.onnx'
+    model_path = r'd:\AI\AUTOavantar\engines\heygem\GFPGANv1.4.onnx'
     input_video = r'd:\AI\AUTOavantar\output\test-dw.mp4'
     output_video = r'd:\AI\AUTOavantar\output\test-dw_gfpgan_face_enhanced.mp4'
 
