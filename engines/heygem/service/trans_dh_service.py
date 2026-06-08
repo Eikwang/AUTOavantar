@@ -53,6 +53,25 @@ import itertools
 # 【修改点1】移除了全局变量 need_chaofen_flag 和 get_firstface_frame
 
 
+def _resolve_gfpgan_model_path():
+    """
+    解析 GFPGAN 模型路径。
+    从 CWD 向上逐级查找 models/gfpgan/GFPGANv1.4.onnx,
+    找到则返回绝对路径, 否则返回 None (回退到 GFPGAN 默认的 pretrain_models 路径)。
+    """
+    _rel_path = os.path.join('models', 'gfpgan', 'GFPGANv1.4.onnx')
+    _dir = os.getcwd()
+    for _ in range(5):  # 最多向上查找 5 级
+        _candidate = os.path.join(_dir, _rel_path)
+        if os.path.exists(_candidate):
+            return os.path.abspath(_candidate)
+        _parent = os.path.dirname(_dir)
+        if _parent == _dir:
+            break
+        _dir = _parent
+    return None
+
+
 def run_silent(command, shell=True):
     """
     静默执行命令，不弹出控制台窗口
@@ -728,27 +747,7 @@ def audio_transfer(drivered_queue, output_imgs_queue, batch_size, terminate_even
 
             detector_wrapper = FaceSelectWrapper(scrfd_detector,target_face_id,last_center=last_center)
 
-            if chaofen_ctrl:
-                s_chao = time.time()
-                img_list = chaofen_batch(img_list, digital_human_model.gfpgan, detector_wrapper)
-                logger.info('[%s] -> chaofen batch cost:%ss', frameId, time.time() - s_chao)
-            
-            # 【修改点9】调用改造后的 chaofen_src
-            # if wh > 0:
-            #     # 初始化当前任务状态
-            #     if code not in task_chaofen_states:
-            #         task_chaofen_states[code] = {'checked': False, 'need_chaofen': False}
-                
-            #     img_list = chaofen_src(
-            #         img_list, 
-            #         digital_human_model.gfpgan, 
-            #         scrfd_detector, 
-            #         frameId, 
-            #         digital_human_model.face_attr, 
-            #         code,
-            #         task_chaofen_states[code], # 传入状态
-            #         chaofen_ctrl               # 传入控制参数
-            #     )
+            # 预处理超分已移除: 超分统一在口型渲染后由 write_video_chaofen 后处理阶段执行
 
             caped_drivered_img2 = warp_imgs(img_list)
             if wh == 0 or wh == -1:
@@ -994,16 +993,52 @@ def save_video_ffmpeg(input_video_path, output_video_path):
 
 
 class FaceDetectThread(Linker):
+    """人脸检测线程, 支持 target_face_id 选择指定人脸"""
 
-    def __init__(self, queue_list):
+    def __init__(self, queue_list, target_face_id=0):
         super().__init__(queue_list, fps_counter=False)
         self.fd = FaceDetect5Landmarks(mode='scrfd_500m')
+        self.target_face_id = target_face_id
+        self.last_center = None  # 用于帧间追踪
 
     def forward_func(self, something_in):
         frame = something_in
         bboxes_scrfd, kpss_scrfd = self.fd.get_bboxes(frame, min_bbox_size=64)
         if len(bboxes_scrfd) == 0:
             return [frame, None, None, None]
+
+        # 根据 target_face_id 选择目标人脸
+        if self.target_face_id == -1:
+            # 超分所有检测到的人脸: 逐个处理, 只返回第一个(后续帧需多次调用)
+            # 当前流水线架构只支持单脸超分, -1 模式下选择最大人脸
+            selected_idx = np.argmax((bboxes_scrfd[:, 2] - bboxes_scrfd[:, 0]) *
+                                     (bboxes_scrfd[:, 3] - bboxes_scrfd[:, 1]))
+        else:
+            # 计算所有人脸的中心点
+            centers = np.vstack([
+                (bboxes_scrfd[:, 0] + bboxes_scrfd[:, 2]) / 2,
+                (bboxes_scrfd[:, 1] + bboxes_scrfd[:, 3]) / 2
+            ]).T
+
+            if self.last_center is None:
+                # 第一帧: 按 Y 坐标从上到下排序选择
+                sorted_indices = np.argsort(centers[:, 1])
+                selected_idx = sorted_indices[min(self.target_face_id, len(bboxes_scrfd) - 1)]
+            else:
+                # 后续帧: 追踪距离最近的人脸
+                distances = np.linalg.norm(centers - self.last_center, axis=1)
+                selected_idx = np.argmin(distances)
+
+            # 更新追踪状态(带平滑)
+            current_center = centers[selected_idx]
+            if self.last_center is None:
+                self.last_center = current_center
+            else:
+                self.last_center = 0.7 * current_center + 0.3 * self.last_center
+
+        # 只保留选中人脸的 bbox 和 kps
+        self.fd.bboxes = bboxes_scrfd[selected_idx:selected_idx+1]
+        self.fd.kpss = kpss_scrfd[selected_idx:selected_idx+1]
         face_image_, mat_rev_, roi_box_ = self.fd.get_single_face(crop_size=512, mode='mtcnn_512', apply_roi=True)
         return [frame, face_image_, mat_rev_, roi_box_]
 
@@ -1012,6 +1047,11 @@ class FaceRestoreThread(Linker):
 
     def __init__(self, queue_list):
         super().__init__(queue_list, fps_counter=False)
+        # 模型路径: 优先使用项目根目录 models/gfpgan/, 回退到原有 pretrain_models 路径
+        from face_lib.face_restore.gfpgan_onnx import gfpgan_onnx_api
+        _gfpgan_model_path = _resolve_gfpgan_model_path()
+        if _gfpgan_model_path and os.path.exists(_gfpgan_model_path):
+            gfpgan_onnx_api.MODEL_ZOO['GFPGANv1.4']['model_path'] = _gfpgan_model_path
         self.gfp = GFPGAN(model_type='GFPGANv1.4', provider='gpu')
 
     def forward_func(self, something_in):
@@ -1067,7 +1107,7 @@ class FaceReverseThread(Linker):
         return [src_img_in]
 
 
-def write_video_chaofen(output_imgs_queue, temp_dir, result_dir, work_id, audio_path, result_queue, width, height, fps, watermark_switch=0, digital_auth=0, output_path=None):
+def write_video_chaofen(output_imgs_queue, temp_dir, result_dir, work_id, audio_path, result_queue, width, height, fps, watermark_switch=0, digital_auth=0, output_path=None, target_face_id=0):
     suppress_console_output()  # 抑制控制台输出
     output_mp4 = os.path.join(temp_dir, f'{work_id}-t.mp4')
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -1083,7 +1123,7 @@ def write_video_chaofen(output_imgs_queue, temp_dir, result_dir, work_id, audio_
         q2 = Queue(2)
         q3 = Queue(2)
         q4 = Queue(2)
-        fdt = FaceDetectThread([q0, q1])
+        fdt = FaceDetectThread([q0, q1], target_face_id=target_face_id)
         frt = FaceRestoreThread([q1, q2])
         fpt = FaceParseThread([q2, q3])
         fret = FaceReverseThread([q3, q4])
@@ -1655,10 +1695,9 @@ class TransDhTask(object):
                                                       task_batch_size, wh, chaofen_ctrl_val, target_face_id),
                                                 daemon=True))
 
-                # 注意：这里的 chaofen 判断是用于后处理（write_video_chaofen），和上面的 chaofen_ctrl_val (预处理) 是两个阶段的控制
-                # 假设 chaofen 参数同时控制两个阶段，或者通过 GlobalConfig 配置
+                # 后处理: 超分由 write_video_chaofen 统一在口型渲染后执行
                 if chaofen == 1:
-                    process_list.append(Process(target=write_video_chaofen, args=(self.output_imgs_queue, GlobalConfig.instance().temp_dir, GlobalConfig.instance().result_dir, code, _tmp_audio_path, self.result_queue, width, height, fps, watermark_switch, digital_auth, output_path), daemon=True))
+                    process_list.append(Process(target=write_video_chaofen, args=(self.output_imgs_queue, GlobalConfig.instance().temp_dir, GlobalConfig.instance().result_dir, code, _tmp_audio_path, self.result_queue, width, height, fps, watermark_switch, digital_auth, output_path, target_face_id), daemon=True))
                 else:
                     process_list.append(Process(target=write_video, args=(self.output_imgs_queue, GlobalConfig.instance().temp_dir, GlobalConfig.instance().result_dir, code, _tmp_audio_path, self.result_queue, width, height, fps, watermark_switch, digital_auth, output_path), daemon=True))
 

@@ -91,8 +91,12 @@ async def async_run_subprocess(
         logger.warning(f"命令超时 ({timeout}s): {cmd[0]}")
         raise subprocess.TimeoutExpired(cmd, timeout)
 
+    except subprocess.CalledProcessError as e:
+        stderr_text = e.stderr.decode('utf-8', errors='replace')[:2000] if e.stderr else ''
+        logger.error(f"命令执行失败 (code={e.returncode}): {stderr_text[:500]}")
+        raise
     except Exception as e:
-        logger.error(f"命令执行失败: {e}")
+        logger.error(f"命令执行异常: {e}")
         raise
 
 

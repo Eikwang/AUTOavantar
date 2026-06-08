@@ -15,6 +15,25 @@ from concurrent.futures import ThreadPoolExecutor
 import threading
 
 
+def _resolve_gfpgan_model_path():
+    """
+    解析 GFPGAN 模型路径。
+    从 CWD 向上逐级查找 models/gfpgan/GFPGANv1.4.onnx,
+    找到则返回绝对路径, 否则返回 None (回退到 GFPGAN 默认的 pretrain_models 路径)。
+    """
+    _rel_path = os.path.join('models', 'gfpgan', 'GFPGANv1.4.onnx')
+    _dir = os.getcwd()
+    for _ in range(5):
+        _candidate = os.path.join(_dir, _rel_path)
+        if os.path.exists(_candidate):
+            return os.path.abspath(_candidate)
+        _parent = os.path.dirname(_dir)
+        if _parent == _dir:
+            break
+        _dir = _parent
+    return None
+
+
 class DigitalHumanModel:
     """使用 ONNX Runtime 的数字人模型类（自动适配不同格式）"""
 
@@ -144,6 +163,14 @@ class DigitalHumanModel:
         # 初始化其他组件
         if chaofen_before == 1:
             from face_lib.face_restore import GFPGAN
+            from face_lib.face_restore.gfpgan_onnx import gfpgan_onnx_api
+            # 模型路径: 从 CWD 向上查找 models/gfpgan/GFPGANv1.4.onnx, 回退到默认路径
+            _gfpgan_model_path = _resolve_gfpgan_model_path()
+            if _gfpgan_model_path:
+                gfpgan_onnx_api.MODEL_ZOO['GFPGANv1.4']['model_path'] = _gfpgan_model_path
+                logger.info(f"GFPGAN 模型路径已更新: {_gfpgan_model_path}")
+            else:
+                logger.info("GFPGAN 使用默认模型路径 (pretrain_models)")
             self.gfpgan = GFPGAN(model_type="GFPGANv1.4", provider="gpu")
 
         self.face_blur_detect = face_blur_detect

@@ -272,7 +272,7 @@ class LicenseService:
 
             # 原子操作：检查和消耗在同一锁内完成
             new_remaining = quota - 1
-            self._save_quota_to_registry(new_remaining)
+            self._save_quota(new_remaining)
             logger.info(f"配额已消耗，剩余: {new_remaining}")
             return True
 
@@ -286,7 +286,7 @@ class LicenseService:
         with self._quota_lock:
             remaining = self._get_remaining_quota()
             new_remaining = max(0, remaining - 1)
-            self._save_quota_to_registry(new_remaining)
+            self._save_quota(new_remaining)
             logger.info(f"配额已消耗，剩余: {new_remaining}")
             return new_remaining
 

@@ -2,7 +2,7 @@ from landmark2face_wy.options.test_options import TestOptions
 import torchvision.transforms as transforms
 from landmark2face_wy.models.l2faceaudio_model import L2FaceAudioModel
 from landmark2face_wy.util.util import *
-import torch, time, math
+import torch, time, math, os
 import torch.nn.functional as F
 from face_lib.face_restore import GFPGAN
 from y_utils.config import GlobalConfig
@@ -49,6 +49,19 @@ class DigitalHumanModel:
         self.model.eval()
         
         if chaofen_before == 1:
+            from face_lib.face_restore.gfpgan_onnx import gfpgan_onnx_api
+            # 模型路径: 从 CWD 向上查找 models/gfpgan/GFPGANv1.4.onnx, 回退到默认路径
+            _rel_path = os.path.join('models', 'gfpgan', 'GFPGANv1.4.onnx')
+            _dir = os.getcwd()
+            for _ in range(5):
+                _candidate = os.path.join(_dir, _rel_path)
+                if os.path.exists(_candidate):
+                    gfpgan_onnx_api.MODEL_ZOO['GFPGANv1.4']['model_path'] = os.path.abspath(_candidate)
+                    break
+                _parent = os.path.dirname(_dir)
+                if _parent == _dir:
+                    break
+                _dir = _parent
             self.gfpgan = GFPGAN(model_type="GFPGANv1.4", provider="gpu")
         self.face_blur_detect = face_blur_detect
         if self.face_blur_detect:
