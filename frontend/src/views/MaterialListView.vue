@@ -404,7 +404,7 @@
               </div>
               <div class="video-preview" v-if="createForm.pip_video_path">
                 <div class="video-preview-with-actions">
-                  <video :src="getFileUrl(createForm.pip_video_path)" controls style="object-fit:contain" />
+                  <video :src="getFileUrl(createForm.pip_video_path, createForm.pip_video_ts)" controls style="object-fit:contain" />
                 </div>
                 <div class="video-actions-row">
                   <el-button type="warning" size="small" @click="openClipDialog('pip', {path: createForm.pip_video_path, name: '画外音视频'}, 'video')">
@@ -440,7 +440,7 @@
                   </div>
                   <div class="video-preview" v-if="createForm.pip_left_video_path">
                     <div class="video-preview-with-actions">
-                      <video :src="getFileUrl(createForm.pip_left_video_path)" controls style="object-fit:contain" />
+                      <video :src="getFileUrl(createForm.pip_left_video_path, createForm.pip_left_video_ts)" controls style="object-fit:contain" />
                     </div>
                     <div class="video-actions-row">
                       <el-button type="warning" size="small" @click="openClipDialog('pip_left', {path: createForm.pip_left_video_path, name: '画外音视频(左)'}, 'video')">
@@ -469,7 +469,7 @@
                   </div>
                   <div class="video-preview" v-if="createForm.pip_right_video_path">
                     <div class="video-preview-with-actions">
-                      <video :src="getFileUrl(createForm.pip_right_video_path)" controls style="object-fit:contain" />
+                      <video :src="getFileUrl(createForm.pip_right_video_path, createForm.pip_right_video_ts)" controls style="object-fit:contain" />
                     </div>
                     <div class="video-actions-row">
                       <el-button type="warning" size="small" @click="openClipDialog('pip_right', {path: createForm.pip_right_video_path, name: '画外音视频(右)'}, 'video')">
@@ -807,7 +807,7 @@
 <script setup>
 import { ref, computed, reactive, onMounted, onUnmounted, watch, nextTick, inject } from 'vue'
 import { useRoute } from 'vue-router'
-import { materialApi, mediaClipApi } from '@/services/api'
+import { materialApi, mediaClipApi, licenseApi } from '@/services/api'
 import { uploadAPI } from '@/api/upload'
 import { ElMessage } from 'element-plus'
 import { Scissor } from '@element-plus/icons-vue'
@@ -1042,8 +1042,11 @@ const createForm = reactive({
   left_audio_id: '',
   right_audio_id: '',
   pip_video_path: '',
+  pip_video_ts: null,
   pip_left_video_path: '',
-  pip_right_video_path: ''
+  pip_left_video_ts: null,
+  pip_right_video_path: '',
+  pip_right_video_ts: null
 })
 
 const createRules = computed(() => ({
@@ -1874,8 +1877,11 @@ const resetForm = () => {
     left_audio_id: '',
     right_audio_id: '',
     pip_video_path: '',
+    pip_video_ts: null,
     pip_left_video_path: '',
-    pip_right_video_path: ''
+    pip_left_video_ts: null,
+    pip_right_video_path: '',
+    pip_right_video_ts: null
   })
   bgmTimestamp.value = null
 }
@@ -2036,6 +2042,12 @@ const handleMediaClipped = async (data) => {
     createForm.opening_video_ts = ts
   } else if (type === 'ending' && createForm.ending_video) {
     createForm.ending_video_ts = ts
+  } else if (type === 'pip' && createForm.pip_video_path) {
+    createForm.pip_video_ts = ts
+  } else if (type === 'pip_left' && createForm.pip_left_video_path) {
+    createForm.pip_left_video_ts = ts
+  } else if (type === 'pip_right' && createForm.pip_right_video_path) {
+    createForm.pip_right_video_ts = ts
   } else if (type === 'loop' || type === 'scene') {
     // 找到被剪辑的视频并更新其 timestamp
     const videos = type === 'loop' ? createForm.loop_videos : createForm.scene_videos
@@ -2099,7 +2111,29 @@ const validateDoubleModeAudio = () => {
   return true
 }
 
-const validateForm = () => {
+const validateForm = async () => {
+  // 未激活用户素材数量限制：每种类型最多创建 10 个
+  if (!isEditing.value) {
+    try {
+      const licenseStatus = await licenseApi.getStatus()
+      if (!licenseStatus.is_activated) {
+        const typeLimits = {
+          role: { list: roles.value, label: '角色素材' },
+          scene: { list: scenes.value, label: '场景素材' },
+          audio: { list: referenceAudios.value, label: '参考音频' },
+          bgm: { list: bgms.value, label: 'BGM' }
+        }
+        const limit = typeLimits[currentTab.value]
+        if (limit && limit.list.length >= 10) {
+          ElMessage.warning(`未激活系统每种类最多创建 10 个，当前${limit.label}已满，请激活后继续使用`)
+          return false
+        }
+      }
+    } catch (e) {
+      console.error('许可证检查失败:', e)
+    }
+  }
+
   // 名称验证
   if (!createForm.name || createForm.name.trim() === '') {
     ElMessage.warning('请输入素材名称')
@@ -2166,7 +2200,7 @@ const validateForm = () => {
 
 const submitForm = async () => {
   // 前端表单验证
-  if (!validateForm()) {
+  if (!(await validateForm())) {
     return
   }
 

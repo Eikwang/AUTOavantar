@@ -61,9 +61,9 @@
                 <div class="price-info">
                   <p class="price-title">价格信息：</p>
                   <ul class="price-list">
-                    <li>一年 <span class="price">69元</span></li>
-                    <li>三年 <span class="price">128元</span></li>
-                    <li>终身 <span class="price original">1280元</span> <span class="discount">限时特惠仅需 <span class="special-price">398元</span></span></li>
+                    <li>一年 <span class="price">169元</span></li>
+                    <li>三年 <span class="price">328元</span></li>
+                    <li>终身 <span class="price original">3280元</span> <span class="discount">限时特惠!仅需 <span class="special-price">398元</span></span></li>
                   </ul>
                 </div>
                 <div class="contact-info">
@@ -195,7 +195,7 @@
           </template>
 
           <div class="form-grid">
-            <el-form-item label="HeyGEM 原始参数">
+            <el-form-item label="原始参数">
               <el-switch v-model="settingsStore.settings.heygem_original" />
               <span class="form-hint">开启后使用原始分辨率/帧率参数</span>
             </el-form-item>
@@ -298,7 +298,7 @@
               />
             </div>
             <p class="ultra-low-memory-hint">
-              开启后进一步降低显存占用（约5-5.5GB），适合显存≤6GB的显卡。首次推理会有额外延迟
+              开启后进一步降低显存占用（约4-5.5GB），适合显存≤6GB的显卡。首次推理会有额外延迟
             </p>
           </div>
         </el-card>

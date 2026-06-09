@@ -38,7 +38,6 @@ def get_cache_dirs() -> List[str]:
         PROJECT_ROOT / "temp",
         PROJECT_ROOT / "output" / "temp",
         PROJECT_ROOT / "backend" / "tmp",
-        PROJECT_ROOT / "backend" / "temp",
         PROJECT_ROOT / "backend" / "output",
         PROJECT_ROOT / "backend" / "logs",
         PROJECT_ROOT / "backend" / "uploads",

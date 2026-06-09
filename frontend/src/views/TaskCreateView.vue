@@ -48,7 +48,7 @@
             </template>
             
             <!-- 开场视频 -->
-            <el-form-item label="开场视频" prop="openingVideo" required>
+            <el-form-item label="开场视频" prop="openingVideo" required class="video-section-item">
               <div class="video-upload-section">
                 <div v-if="taskForm.openingVideo" class="video-item">
                   <div class="video-info">
@@ -79,7 +79,7 @@
             </el-form-item>
             
             <!-- 循环视频 -->
-            <el-form-item label="循环视频">
+            <el-form-item label="循环视频" class="video-section-item">
               <div class="video-upload-section">
                 <div class="video-grid-2col">
                   <div
@@ -130,7 +130,7 @@
             </el-form-item>
             
             <!-- 结束视频 -->
-            <el-form-item label="结束视频">
+            <el-form-item label="结束视频" class="video-section-item">
               <div class="video-upload-section">
                 <div v-if="taskForm.endingVideo" class="video-item">
                   <div class="video-info">
@@ -161,7 +161,7 @@
             </el-form-item>
 
             <!-- 画外音视频 -->
-            <el-form-item label="画外音视频">
+            <el-form-item label="画外音视频" class="video-section-item">
               <div class="video-upload-section">
                 <!-- 单人模式 -->
                 <template v-if="!taskForm.videoParams.dualMode">
@@ -254,7 +254,7 @@
             </el-form-item>
 
             <!-- 场景视频 -->
-            <el-form-item label="场景视频">
+            <el-form-item label="场景视频" class="video-section-item">
               <div class="video-upload-section">
                 <div class="tag-group-selector">
                   <span class="selector-label">标签组：</span>
@@ -317,26 +317,34 @@
 
             <!-- 视频参数 -->
             <div class="video-params">
-              <el-row :gutter="20">
+              <el-row :gutter="16">
                 <el-col :span="6">
-                  <el-form-item label="原始参数">
-                    <el-switch v-model="taskForm.videoParams.heygemOriginal" />
-                  </el-form-item>
+                  <div class="param-card">
+                    <el-form-item label="原始参数" class="param-item">
+                      <el-switch v-model="taskForm.videoParams.heygemOriginal" />
+                    </el-form-item>
+                  </div>
                 </el-col>
                 <el-col :span="6">
-                  <el-form-item label="画外音">
-                    <el-switch v-model="taskForm.videoParams.enablePip" @change="handlePipToggle" />
-                  </el-form-item>
+                  <div class="param-card">
+                    <el-form-item label="画外音" class="param-item">
+                      <el-switch v-model="taskForm.videoParams.enablePip" @change="handlePipToggle" />
+                    </el-form-item>
+                  </div>
                 </el-col>
                 <el-col :span="6">
-                  <el-form-item label="推理批次">
-                    <el-input-number v-model="taskForm.videoParams.inferenceSteps" :min="4" :max="32" :step="4" />
-                  </el-form-item>
+                  <div class="param-card">
+                    <el-form-item label="推理批次" class="param-item">
+                      <el-input-number v-model="taskForm.videoParams.inferenceSteps" :min="4" :max="32" :step="4" />
+                    </el-form-item>
+                  </div>
                 </el-col>
                 <el-col :span="6">
-                  <el-form-item label="双人模式">
-                    <el-switch v-model="taskForm.videoParams.dualMode" @change="handleDualModeChange" />
-                  </el-form-item>
+                  <div class="param-card">
+                    <el-form-item label="双人模式" class="param-item">
+                      <el-switch v-model="taskForm.videoParams.dualMode" @change="handleDualModeChange" />
+                    </el-form-item>
+                  </div>
                 </el-col>
               </el-row>
             </div>
@@ -588,10 +596,10 @@
                   </div>
                 </div>
 
-                <!-- 右侧：随机效果 + 转场时长 -->
+                <!-- 右侧：随机效果 + 转场时长（合并为一个卡片） -->
                 <div class="transition-col">
-                  <!-- 随机效果 -->
-                  <div class="setting-group">
+                  <div class="setting-group merged-group">
+                    <!-- 随机效果部分 -->
                     <div class="group-title">
                       <el-icon><MagicStick /></el-icon>
                       <span>随机效果</span>
@@ -608,10 +616,11 @@
                         </el-checkbox>
                       </div>
                     </div>
-                  </div>
 
-                  <!-- 转场时长 -->
-                  <div class="setting-group">
+                    <!-- 分隔线 -->
+                    <div class="group-divider"></div>
+
+                    <!-- 转场时长部分 -->
                     <div class="group-title">
                       <el-icon><Clock /></el-icon>
                       <span>转场时长</span>
@@ -1083,7 +1092,7 @@ import { useTaskStore } from '@/stores/taskStore.js'
 import { useMaterialStore } from '@/stores/materialStore.js'
 import { useSettingsStore } from '@/stores/settingsStore.js'
 import { useTagStore } from '@/stores/tagStore.js'
-import { taskApi, mediaClipApi } from '@/services/api'
+import { taskApi, mediaClipApi, licenseApi } from '@/services/api'
 import api from '@/services/api'
 import websocketService from '@/services/websocket'
 import VideoSelectorDialog from '@/components/VideoSelectorDialog.vue'
@@ -1207,13 +1216,13 @@ const rules = {
     { required: true, message: '请选择开场视频', trigger: 'change' }
   ],
   audio: [
-    { required: true, message: '请选择参考音频', trigger: 'change', validator: () => !taskForm.videoParams.dualMode }
+    { required: true, message: '请选择参考音频', trigger: 'change' }
   ],
   leftAudio: [
-    { required: true, message: '请选择左边说话人音频', trigger: 'change', validator: () => taskForm.videoParams.dualMode }
+    { required: true, message: '请选择左边说话人音频', trigger: 'change' }
   ],
   rightAudio: [
-    { required: true, message: '请选择右边说话人音频', trigger: 'change', validator: () => taskForm.videoParams.dualMode }
+    { required: true, message: '请选择右边说话人音频', trigger: 'change' }
   ],
   scriptContent: [
     { required: true, message: '请输入文案内容', trigger: 'blur' }
@@ -2307,6 +2316,17 @@ const selectRole = (role) => {
 
 // 提交任务
 const submitTask = async (runImmediately) => {
+  // 未激活用户待运行任务数量限制
+  try {
+    const licenseStatus = await licenseApi.getStatus()
+    if (!licenseStatus.is_activated && taskStore.pendingTasks.length >= 10) {
+      ElMessage.warning('未激活系统最多添加 10 个待运行任务，当前待运行任务已满，请先运行或删除已有任务后再添加')
+      return
+    }
+  } catch (e) {
+    console.error('许可证检查失败:', e)
+  }
+
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
   
@@ -2542,6 +2562,46 @@ const handleTagGroupChange = async (groupId) => {
   font-weight: 500;
 }
 
+/* 视频区域标题样式 - 醒目效果 */
+.video-section-item {
+  position: relative;
+  margin-bottom: 20px;
+  padding-top: 8px;
+  
+  :deep(.el-form-item__label) {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 15px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    margin-bottom: 16px;
+    transition: all 0.3s ease;
+    
+    &::before {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 16px;
+      background: #ffd700;
+      border-radius: 2px;
+    }
+    
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+  }
+  
+  :deep(.el-form-item__content) {
+    margin-top: 0;
+  }
+}
+
 .video-upload-section,
 .audio-upload-section {
   display: flex;
@@ -2765,6 +2825,31 @@ const handleTagGroupChange = async (groupId) => {
   margin-top: 20px;
   padding-top: 20px;
   border-top: 1px solid var(--color-border-strong);
+}
+
+.video-params .param-card {
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border-radius: 8px;
+  padding: 12px 16px;
+  border: 1px solid var(--color-border-light);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.video-params .param-item {
+  margin-bottom: 0;
+}
+
+.video-params .param-item :deep(.el-form-item__label) {
+  font-weight: 500;
+  color: var(--color-text-regular);
+  font-size: var(--font-size-base);
+  padding-bottom: 6px;
+}
+
+.video-params .param-item :deep(.el-form-item__content) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
 }
 
 .speaker-params {
@@ -3360,6 +3445,28 @@ const handleTagGroupChange = async (groupId) => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  align-items: stretch;
+}
+
+.transition-col .setting-group {
+  flex: 1;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.transition-col .setting-group.merged-group {
+  flex-direction: column;
+}
+
+.transition-col .setting-group.merged-group .group-content {
+  flex: 1;
+}
+
+.group-divider {
+  height: 1px;
+  background: var(--color-border-light);
+  margin: 16px 0;
 }
 
 .type-select {
