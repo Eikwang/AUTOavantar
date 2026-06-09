@@ -119,3 +119,5 @@ dist/
 py310/
 AGENTS.md
 .omo/
+files.txt
+filesbun.txt
