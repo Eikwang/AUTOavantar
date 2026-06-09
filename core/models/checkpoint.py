@@ -58,7 +58,7 @@ class CheckpointData:
     scene_pip_left_video: Optional[str] = None
     scene_pip_right_video: Optional[str] = None
     scene_pip_processed: Optional[List[str]] = None
-    
+
     def to_json(self) -> str:
         """序列化为 JSON 字符串"""
         return json.dumps(asdict(self), ensure_ascii=False, indent=2)

@@ -230,13 +230,19 @@ async def trigger_update():
     """
     触发更新流程
 
-    创建更新标记文件，并通知启动器执行更新
-    更新流程：
+    更新流程（优化后）：
     1. 创建 .update_pending 标记文件
-    2. 调用系统退出，让 desktop_launcher 检测标记并执行更新
-    → AC-003: 触发更新流程
+    2. 启动独立更新脚本（分离进程，不依赖主程序）
+    3. 退出当前程序
+    4. 更新脚本等待主程序退出后执行 git 更新
+    5. 更新完成后自动启动应用
+
+    核心改进：更新脚本作为完全独立的进程运行，
+    不再需要用户手动重启程序来触发更新。
+    -> AC-003: 触发更新流程
     """
     import asyncio
+    import platform as _platform
 
     try:
         app_dir = get_app_dir()
@@ -244,16 +250,36 @@ async def trigger_update():
 
         # 创建更新标记
         update_flag_file.write_text("pending", encoding='utf-8')
-        logger.info("更新标记已创建，系统将在 3 秒后退出以执行更新")
+        logger.info("更新标记已创建")
+
+        # 启动独立更新脚本（分离进程）
+        update_script = app_dir / "tools" / "update_and_restart.py"
+        python_exe = str(app_dir / "runtime" / "python.exe") if (app_dir / "runtime" / "python.exe").exists() else "python"
+
+        if update_script.exists():
+            try:
+                creationflags = 0
+                if _platform.system() == "Windows":
+                    creationflags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+
+                subprocess.Popen(
+                    [python_exe, str(update_script), "--auto-start"],
+                    cwd=str(app_dir),
+                    creationflags=creationflags
+                )
+                logger.info("更新脚本已启动（分离进程）")
+            except Exception as e:
+                logger.warning(f"启动更新脚本失败: {e}")
+        else:
+            logger.warning(f"更新脚本不存在: {update_script}")
 
         # 异步延迟退出，给前端时间显示提示
         async def delayed_exit():
             await asyncio.sleep(3)
-            logger.info("系统退出，准备执行更新...")
+            logger.info("系统退出，更新脚本将接管更新流程...")
 
             # 先调用 shutdown 接口进行资源清理
             try:
-                import urllib.request
                 shutdown_url = f"http://127.0.0.1:8000/api/system/shutdown"
                 req = urllib.request.Request(shutdown_url, method='POST')
                 req.add_header('Content-Type', 'application/json')
@@ -262,8 +288,7 @@ async def trigger_update():
             except Exception as e:
                 logger.warning(f"清理接口调用失败：{e}")
 
-            # Windows 上使用 os._exit 强制退出，比 SIGTERM 更可靠
-            # SIGTERM 在 Windows 上可能被忽略或处理不当
+            # 退出主程序，更新脚本已独立运行
             import os
             os._exit(0)
 
@@ -272,7 +297,7 @@ async def trigger_update():
 
         return UpdateResponse(
             success=True,
-            message="更新已启动，系统将在 3 秒后自动退出"
+            message="更新已启动，系统将自动退出并完成更新"
         )
     except Exception as e:
         logger.error(f"触发更新失败：{e}")

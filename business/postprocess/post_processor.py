@@ -64,9 +64,19 @@ class PostProcessor:
         self.output_dir = output_dir
         self.audio_mixer = AudioMixer(temp_dir=os.path.join(intermediate_dir, "temp"))
         self.cover_prompt_template = self._load_cover_prompt_template()
+        self._intermediate_files: List[str] = []
 
         os.makedirs(intermediate_dir, exist_ok=True)
         os.makedirs(output_dir, exist_ok=True)
+
+    def _track_intermediate(self, file_path: str):
+        """记录中间文件路径，供任务完成后的清理和检查点使用"""
+        if file_path and os.path.exists(file_path):
+            self._intermediate_files.append(file_path)
+
+    def _reset_intermediate_tracking(self):
+        """重置中间文件追踪列表"""
+        self._intermediate_files = []
 
     def _load_cover_prompt_template(self) -> str:
         """从系统设置加载封面提示词模版"""
@@ -110,6 +120,9 @@ class PostProcessor:
             处理结果
         """
         try:
+            # 重置中间文件追踪
+            self._reset_intermediate_tracking()
+
             # 1. 检查是否有需要画外音叠加的片段（单人模式新流程）
             # 流程：生成音频→生成视频→视频标准化→叠加头像
             pip_segments = []
@@ -174,6 +187,7 @@ class PostProcessor:
                             )
                             if await self._normalize_video(tone_path, unified_target_w, unified_target_h, unified_target_fps, norm_path):
                                 normalized_tone_map[tone] = norm_path
+                                self._track_intermediate(norm_path)
 
                     # 按原始 tone 顺序构建 video_paths
                     if completed_tone_videos:
@@ -226,6 +240,7 @@ class PostProcessor:
                         )
                         if await self._normalize_video(seg.output_path, unified_target_w, unified_target_h, unified_target_fps, norm_path):
                             normalized_non_pip[seg.segment_id] = norm_path
+                            self._track_intermediate(norm_path)
                             logger.info(f"段落 {seg.segment_id} 统一尺寸: {seg.output_path} -> {norm_path}")
 
                 # 收集处理后的路径
@@ -381,7 +396,7 @@ class PostProcessor:
                 subtitle_path=subtitle_path,
                 cover_path=cover_path,
                 status="success",
-                intermediate_files=intermediate_files
+                intermediate_files=intermediate_files + self._intermediate_files
             )
 
         except Exception as e:
@@ -823,12 +838,13 @@ class PostProcessor:
                 if not scene_success or not os.path.exists(normalized_scene):
                     logger.warning(f"段落 {seg.segment_id} 场景视频标准化失败，跳过叠加")
                     continue
+                self._track_intermediate(normalized_scene)
 
                 # 步骤2：说话人视频不标准化，直接在 overlay 的 filter_complex 中 scale 到 PIP 大小
 
                 # 步骤3：执行 PIP 叠加（说话人视频直接使用原始路径）
                 output_path = os.path.join(
-                    self.output_dir,
+                    self.intermediate_dir,
                     f"scene_pip_{seg.segment_id}.mp4"
                 )
 
@@ -844,6 +860,7 @@ class PostProcessor:
                 )
 
                 if merge_success and os.path.exists(output_path):
+                    self._track_intermediate(output_path)
                     # 更新 segment 的 output_path
                     seg.output_path = output_path
                     seg.video_path = output_path
@@ -938,12 +955,13 @@ class PostProcessor:
             if not scene_success or not os.path.exists(normalized_scene):
                 logger.error("双人模式 PIP：场景视频标准化失败")
                 return None
+            self._track_intermediate(normalized_scene)
 
             # 步骤2：说话人视频不标准化，直接在 overlay 的 filter_complex 中 scale 到 PIP 大小
 
             # 步骤3：执行叠加（说话人视频直接使用原始路径）
             output_path = os.path.join(
-                self.output_dir,
+                self.intermediate_dir,
                 f"scene_pip_double_{task.task_id}_{current_tone}.mp4"
             )
 
@@ -989,6 +1007,7 @@ class PostProcessor:
                 return None
 
             if success and os.path.exists(output_path):
+                self._track_intermediate(output_path)
                 logger.info(f"双人模式 PIP 叠加完成: {output_path}")
                 return output_path
             else:
@@ -1181,121 +1200,11 @@ class PostProcessor:
             logger.error(f"双人 PIP 叠加失败: {e}")
             return False
 
-    async def _apply_pip_overlay(
-        self,
-        segments: List[Any],
-        target_width: int,
-        target_height: int,
-        target_fps: float
-    ) -> Dict[str, str]:
-        """
-        对需要画外音叠加的片段进行标准化后的 PIP 叠加
-
-        Args:
-            segments: 包含 pending_speaker_video 和 scene_video_path 的片段列表
-            target_width: 目标宽度
-            target_height: 目标高度
-            target_fps: 目标帧率
-
-        Returns:
-            segment_id 到叠加后视频路径的映射
-        """
-        result_paths = {}
-
-        # 获取说话人视频的基准分辨率（用于确定叠加位置）
-        # 由于场景视频已被标准化到目标分辨率，叠加位置也基于目标分辨率
-
-        for segment in segments:
-            # 检查是否需要 PIP 叠加
-            if not getattr(segment, 'need_pip_overlay', False):
-                continue
-
-            speaker_video = getattr(segment, 'pending_speaker_video', None)
-            scene_video = getattr(segment, 'scene_video_path', None)
-
-            if not speaker_video or not scene_video:
-                logger.warning(f"段落 {segment.segment_id} 缺少说话人或场景视频路径，跳过叠加")
-                continue
-
-            if not os.path.exists(speaker_video):
-                logger.warning(f"段落 {segment.segment_id} 说话人视频不存在: {speaker_video}")
-                continue
-
-            if not os.path.exists(scene_video):
-                logger.warning(f"段落 {segment.segment_id} 场景视频不存在: {scene_video}")
-                continue
-
-            try:
-                # 标准化说话人视频到目标分辨率
-                normalized_speaker = os.path.join(
-                    self.intermediate_dir,
-                    f"pip_normalized_{segment.segment_id}_{os.path.basename(speaker_video)}"
-                )
-
-                # 标准化说话人视频
-                speaker_normalized = await self._normalize_video(
-                    speaker_video,
-                    target_width,
-                    target_height,
-                    target_fps,
-                    normalized_speaker
-                )
-
-                if not speaker_normalized:
-                    logger.warning(f"段落 {segment.segment_id} 说话人视频标准化失败，跳过叠加")
-                    continue
-
-                # 标准化场景视频到目标分辨率
-                normalized_scene = os.path.join(
-                    self.intermediate_dir,
-                    f"scene_normalized_{segment.segment_id}_{os.path.basename(scene_video)}"
-                )
-
-                scene_normalized = await self._normalize_video(
-                    scene_video,
-                    target_width,
-                    target_height,
-                    target_fps,
-                    normalized_scene
-                )
-
-                if not scene_normalized:
-                    logger.warning(f"段落 {segment.segment_id} 场景视频标准化失败，跳过叠加")
-                    continue
-
-                # 执行 PIP 叠加（基于标准化后的分辨率）
-                output_path = os.path.join(
-                    self.intermediate_dir,
-                    f"scene_pip_{segment.segment_id}.mp4"
-                )
-
-                success = await self._merge_pip_video(
-                    scene_video_path=scene_normalized,
-                    pip_video_path=speaker_normalized,
-                    output_path=output_path,
-                    position="bottom-left",
-                    pip_size=0.25,
-                    circle_mask=True,
-                    mix_audio=True,
-                    remove_scene_audio=True
-                )
-
-                if success and os.path.exists(output_path):
-                    result_paths[segment.segment_id] = output_path
-                    logger.info(f"段落 {segment.segment_id} PIP 叠加完成: {output_path}")
-                else:
-                    logger.error(f"段落 {segment.segment_id} PIP 叠加失败")
-
-            except Exception as e:
-                logger.error(f"段落 {segment.segment_id} PIP 叠加异常: {e}")
-                continue
-
-        return result_paths
-
     def _ensure_circle_mask(self, width: int, height: int) -> str:
         """生成圆形遮罩PNG文件, 返回文件路径"""
-        mask_path = os.path.join(self.output_dir, f"pip_circle_mask_{width}x{height}.png")
+        mask_path = os.path.join(self.intermediate_dir, f"pip_circle_mask_{width}x{height}.png")
         if os.path.exists(mask_path):
+            self._track_intermediate(mask_path)
             return mask_path
 
         try:
@@ -1320,6 +1229,7 @@ class PostProcessor:
                         dist = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
                         f.write(bytes([255 if dist <= r else 0]))
             logger.info(f"圆形遮罩已生成(PGM): {mask_path}")
+        self._track_intermediate(mask_path)
         return mask_path
 
     async def _merge_pip_video(

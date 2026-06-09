@@ -118,3 +118,4 @@ dist/
 .understand-anything/
 py310/
 AGENTS.md
+.omo/

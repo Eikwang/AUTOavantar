@@ -1499,7 +1499,7 @@ class DigitalHumanWorkflow:
         # 清理 pip_speaker_videos 中的说话人视频
         if task.pip_speaker_videos:
             for tone, tone_data in task.pip_speaker_videos.items():
-                for key in ('left', 'right'):
+                for key in ('left', 'right', 'scene'):
                     file_path = tone_data.get(key)
                     if file_path and os.path.exists(file_path):
                         try:
