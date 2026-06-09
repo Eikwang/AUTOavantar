@@ -114,6 +114,7 @@
 
         <div class="video-container">
           <video
+            :key="videoInfo?.timestamp || 0"
             ref="videoPlayer"
             :src="`/files/${videoInfo?.video_path}${videoInfo?.timestamp ? '?t=' + videoInfo.timestamp : ''}`"
             controls
@@ -267,6 +268,7 @@
         >
           <div class="segment-video-wrapper">
             <video
+              :key="`seg-${seg.segment_id}-${seg.timestamp || 0}`"
               :src="`/files/${seg.video_path}${seg.timestamp ? '?t=' + seg.timestamp : ''}`"
               controls
               class="segment-video"
@@ -481,6 +483,7 @@
             :is-dark-theme="isDarkTheme"
             default-mode="trim"
             @clipped="handleClipped"
+            @cropped="handleCropped"
           />
         </div>
       </div>
@@ -849,6 +852,30 @@ const handleClipped = async (data) => {
   } else {
     await handleVideoClipped(data)
   }
+}
+
+// 画面裁剪回调
+const handleCropped = async (data) => {
+  console.log('[SmartCutView] handleCropped 被调用:', data)
+  const ts = Date.now()
+  showClipDialog.value = false
+
+  if (currentClippingSegmentId.value) {
+    // 片段画面裁剪
+    const segIndex = segments.value.findIndex(s => s.segment_id === currentClippingSegmentId.value)
+    if (segIndex !== -1) {
+      segments.value[segIndex] = {
+        ...segments.value[segIndex],
+        timestamp: ts
+      }
+    }
+    currentClippingSegmentId.value = null
+  } else if (videoInfo.value) {
+    // 主视频画面裁剪
+    videoInfo.value = { ...videoInfo.value, timestamp: ts }
+  }
+
+  ElMessage.success('裁剪成功')
 }
 
 // 原视频剪辑回调
